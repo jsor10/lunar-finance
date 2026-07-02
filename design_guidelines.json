@@ -1,0 +1,171 @@
+{
+  "app_name": "Salary Manager",
+  "personality": "6 Glass / Luxe",
+  "personality_one_liner": "A cinematic, deeply refined financial sanctuary that replaces clutter with breathing room and uses elegant typography to evoke high-end exclusivity.",
+  "color": {
+    "surface": "#FAFAFA",
+    "onSurface": "#121212",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1A1A1A",
+    "surfaceTertiary": "#F0F0F0",
+    "onSurfaceTertiary": "#4A4A4A",
+    "surfaceInverse": "#121212",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#0B1F3B",
+    "brandPrimary": "#0B1F3B",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#1C3A66",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E6ECF5",
+    "onBrandTertiary": "#0B1F3B",
+    "success": "#0F3D2E",
+    "onSuccess": "#FFFFFF",
+    "warning": "#C6A45A",
+    "onWarning": "#121212",
+    "error": "#611A15",
+    "onError": "#FFFFFF",
+    "info": "#1C3A66",
+    "onInfo": "#FFFFFF",
+    "border": "#EAEAEA",
+    "borderStrong": "#CCCCCC",
+    "divider": "#EAEAEA"
+  },
+  "typography": {
+    "displayFontFamily": "Cormorant Garamond",
+    "textFontFamily": "Satoshi",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24,
+      "3xl": 32,
+      "4xl": 48
+    }
+  },
+  "spacing": {
+    "rule": "Generous negative space is the primary indicator of luxury. Separate related items with at least 24px, and major sections with 48px or more. Avoid visual crowding at all costs.",
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "2xl": 48,
+    "3xl": 64
+  },
+  "radius_tokens": {
+    "sm": 4,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Feather",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use frosted glass on the bottom tab bar when content scrolls behind it.",
+      "Apply glass overlay on the hero balance card combined with the abstract texture.",
+      "Use glass on sticky section headers."
+    ],
+    "dont's": [
+      "Never blur body text or form inputs.",
+      "Avoid stacking more than 2 blurred surfaces on a single screen."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Google Login",
+      "purpose": "A cinematic, frictionless entry point highlighting the premium nature of the app.",
+      "states": {
+        "loading": "Subtle elegant spinner over the hero background.",
+        "empty": "N/A",
+        "error": "Minimalist red text notification gracefully dropping from top."
+      },
+      "layout": "Full-bleed abstract luxury background image. The top 50% is visual breathing room. At the bottom 30%, a glass-morphic sheet or gradient scrim holds the elegant 'Salary Manager' serif title, followed by a wide, minimalist Google Social Login button (white bg, grey border, sleek logo)."
+    },
+    {
+      "name": "Home Dashboard",
+      "purpose": "The financial command center presenting balances and summaries with airy, card-based progressive disclosure.",
+      "states": {
+        "loading": "Skeleton lines with a soft, slow shimmer effect.",
+        "empty": "Beautiful minimalist icon illustrating 'No data yet' with a prompt to set salary.",
+        "error": "A calm, readable error card requesting a retry."
+      },
+      "layout": "Scrollable view. Top section: Glass-morphic Hero Card over a subtle abstract background showing 'Available Balance' in huge Serif typography (e.g., 48px). Below it, a clean 'Salary' CTA button to trigger the modal. Middle section: 2-column grid or horizontal scrolling cards for 'Total Expenses' and 'Extra Income'. Bottom section: 'Monthly Stats' chart or simple progress bars with massive padding. Floating bottom tab bar (glass)."
+    },
+    {
+      "name": "Salary Modal",
+      "purpose": "A focused, distraction-free input to update the core financial baseline.",
+      "states": {
+        "loading": "Input disabled, CTA shows spinner.",
+        "empty": "Large '0.00' placeholder.",
+        "error": "Shake animation on input, red subtext."
+      },
+      "layout": "Opened via a centered Bottom Sheet or full-screen Modal. Dimmed background. An oversized, borderless input field in Serif font dominating the screen. A single, wide, premium sticky CTA button ('Set Salary') anchored at the bottom."
+    },
+    {
+      "name": "Transactions",
+      "purpose": "A refined ledger of expenses and extra income, grouped logically with generous spacing.",
+      "states": {
+        "loading": "List skeleton.",
+        "empty": "Elegant illustration (e.g., an empty tray or abstract shape) with 'No transactions yet'.",
+        "error": "Minimalist error state with a reload icon."
+      },
+      "layout": "Top row: Segmented control or elegant tabs (Expenses / Income). List rows: Generous vertical padding (24px per row). No ugly dividers; just negative space. Each row features a subtle icon container (`brandTertiary` background), title, and amount aligned right. Swiping a row reveals luxurious, smooth 'Edit' and 'Delete' actions. Floating Action Button (FAB) for adding new transactions."
+    },
+    {
+      "name": "Settings",
+      "purpose": "A comprehensive configuration area handling profile, theme switching, and account danger zones.",
+      "states": {
+        "loading": "Standard spinner.",
+        "empty": "N/A",
+        "error": "Toast or inline text alert."
+      },
+      "layout": "List layout with 32px gaps between logical groups. Group 1: Personal Info (Name, masked email/password). Group 2: Interface Design. Features a 3-option accent color picker displaying Midnight Navy, Champagne Gold, and Deep Emerald as premium tinted circles. A toggle for Light/Dark mode. A currency switcher (EUR, USD, GBP). Group 3: Log Out and Delete Account (red text, bottom anchored)."
+    }
+  ],
+  "images": {
+    "login_hero": {
+      "url": "https://images.unsplash.com/photo-1637625854255-d893202554f4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGx1eHVyeSUyMG1pbmltYWxpc3QlMjBiYWNrZ3JvdW5kfGVufDB8fHx3aGl0ZXwxNzgzMDI3MjA4fDA&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1655841439659-0afc60676b70?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBtaW5pbWFsaXN0JTIwYmFja2dyb3VuZHxlbnwwfHx8YmxhY2t8MTc4MzAyNzIwOHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract elegant background with subtle geometry"
+    },
+    "home_card_bg": {
+      "url": "https://images.pexels.com/photos/24712928/pexels-photo-24712928.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "dark": "https://images.pexels.com/photos/30232780/pexels-photo-30232780.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Subtle abstract texture for balance card"
+    }
+  },
+  "haptics": {
+    "primary_button": "impactMedium",
+    "tab_switch": "selection",
+    "set_salary_success": "notificationSuccess",
+    "delete_transaction": "impactHeavy",
+    "theme_color_switch": "impactLight"
+  },
+  "instructions_to_main_agent": [
+    "IMPLEMENT THE 3 REQUIRED ACCENT COLORS. The default theme is Light Mode with Midnight Navy (#0B1F3B). You MUST implement the color picker logic in Settings that swaps 'brand', 'brandPrimary', 'brandSecondary', and 'brandTertiary' across the entire app.",
+    "THEME TOKENS FOR CHAMPAGNE GOLD: brandPrimary = #C6A45A. brandSecondary = #A48645. brandTertiary = #F9F5EC (Light Mode) / #3A301A (Dark Mode).",
+    "THEME TOKENS FOR DEEP EMERALD: brandPrimary = #0F3D2E. brandSecondary = #0A281E. brandTertiary = #E7ECEA (Light Mode) / #071D15 (Dark Mode).",
+    "DARK MODE BASE TOKENS: surface = #050505, surfaceSecondary = #121212, surfaceTertiary = #1E1E1E. In dark mode, ensure brandPrimary buttons still have visible contrast, or use a slightly lighter tint for readability.",
+    "Typography: Use Cormorant Garamond for all major numbers (balances, totals, inputs) and headers. Use Satoshi for all labels, subtext, and lists. Do not exceed font-weight 500.",
+    "Spacing: Execute 'Luxury of Air'. Pad major cards by at least 24px inside, and separate groups by 48px. Avoid dividing lines entirely; use negative space to separate list items.",
+    "Use a top-to-bottom gradient scrim (0% transparent to 80% surfaceInverse) whenever placing text over the 'login_hero' or 'home_card_bg' images.",
+    "Build the Salary Modal as a bottom sheet with a massive, focused input field. Strip away all unnecessary UI chrome.",
+    "Settings Screen: Implement the lockout timer for the 'Delete Account' button as requested in the brief (e.g., a 5-second countdown before the button becomes active)."
+  ]
+}
