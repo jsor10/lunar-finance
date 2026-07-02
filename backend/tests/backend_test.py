@@ -1,0 +1,151 @@
+"""Salary Manager backend API tests."""
+import os
+import uuid
+import pytest
+import requests
+from datetime import datetime, timezone, timedelta
+
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://salary-manager-140.preview.emergentagent.com").rstrip("/")
+TOKEN = "test_session_token_fixed_123456"
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
+
+@pytest.fixture(scope="session")
+def api():
+    s = requests.Session()
+    s.headers.update({"Content-Type": "application/json"})
+    return s
+
+
+# ---------- Auth ----------
+class TestAuth:
+    def test_me_with_token(self, api):
+        r = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["user_id"] == "user_testseed001"
+        assert d["email"] == "testuser@salarymanager.dev"
+        for k in ("name", "salary", "theme", "accent", "currency"):
+            assert k in d
+
+    def test_me_missing_token_returns_401(self, api):
+        r = api.get(f"{BASE_URL}/api/auth/me")
+        assert r.status_code == 401, r.text
+
+    def test_me_invalid_token_returns_401(self, api):
+        r = api.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": "Bearer bad_token_xyz"})
+        assert r.status_code == 401
+
+    def test_session_invalid_id_returns_401(self, api):
+        r = api.post(f"{BASE_URL}/api/auth/session", json={"session_id": "invalid_bogus_id_zzz"})
+        assert r.status_code == 401
+
+
+# ---------- Profile / settings ----------
+class TestProfileAndSettings:
+    def test_update_profile_name_persists(self, api):
+        new_name = f"TEST_Name_{uuid.uuid4().hex[:6]}"
+        r = api.put(f"{BASE_URL}/api/user/profile", json={"name": new_name}, headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["name"] == new_name
+        # GET to verify
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        assert me["name"] == new_name
+        # restore
+        api.put(f"{BASE_URL}/api/user/profile", json={"name": "Test User"}, headers=AUTH)
+
+    def test_update_settings_persists(self, api):
+        payload = {"theme": "dark", "accent": "gold", "currency": "USD"}
+        r = api.put(f"{BASE_URL}/api/user/settings", json=payload, headers=AUTH)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["theme"] == "dark" and d["accent"] == "gold" and d["currency"] == "USD"
+        # GET verify
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        assert me["theme"] == "dark" and me["accent"] == "gold" and me["currency"] == "USD"
+        # restore defaults
+        api.put(f"{BASE_URL}/api/user/settings",
+                json={"theme": "light", "accent": "navy", "currency": "EUR"}, headers=AUTH)
+
+    def test_delete_lock_set_and_clear(self, api):
+        until = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        r = api.put(f"{BASE_URL}/api/user/delete-lock", json={"lock_until": until}, headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["delete_lock_until"] == until
+        r2 = api.put(f"{BASE_URL}/api/user/delete-lock", json={"lock_until": None}, headers=AUTH)
+        assert r2.status_code == 200
+        assert r2.json()["delete_lock_until"] is None
+
+
+# ---------- Finance / salary ----------
+class TestSalary:
+    def test_update_salary(self, api):
+        r = api.put(f"{BASE_URL}/api/finance/salary", json={"salary": 4500.75}, headers=AUTH)
+        assert r.status_code == 200
+        assert abs(r.json()["salary"] - 4500.75) < 1e-6
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        assert abs(me["salary"] - 4500.75) < 1e-6
+
+
+# ---------- Transactions CRUD ----------
+class TestTransactions:
+    def test_create_get_update_delete(self, api):
+        # create expense
+        payload = {"type": "expense", "amount": 120.50, "description": "TEST_groceries"}
+        r = api.post(f"{BASE_URL}/api/transactions", json=payload, headers=AUTH)
+        assert r.status_code == 200, r.text
+        tx = r.json()
+        assert tx["type"] == "expense" and tx["amount"] == 120.50
+        tx_id = tx["id"]
+
+        # list contains it
+        lst = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        assert any(t["id"] == tx_id for t in lst)
+
+        # update -> income
+        upd = {"type": "income", "amount": 50.0, "description": "TEST_bonus"}
+        r = api.put(f"{BASE_URL}/api/transactions/{tx_id}", json=upd, headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["type"] == "income" and r.json()["amount"] == 50.0
+
+        # verify update via GET
+        lst2 = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        got = [t for t in lst2 if t["id"] == tx_id][0]
+        assert got["description"] == "TEST_bonus"
+
+        # delete
+        r = api.delete(f"{BASE_URL}/api/transactions/{tx_id}", headers=AUTH)
+        assert r.status_code == 200
+        # verify absent
+        lst3 = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        assert not any(t["id"] == tx_id for t in lst3)
+
+        # delete again -> 404
+        r = api.delete(f"{BASE_URL}/api/transactions/{tx_id}", headers=AUTH)
+        assert r.status_code == 404
+
+    def test_invalid_type_400(self, api):
+        r = api.post(f"{BASE_URL}/api/transactions",
+                     json={"type": "bogus", "amount": 10, "description": "x"}, headers=AUTH)
+        assert r.status_code == 400
+
+    def test_transactions_unauth_401(self, api):
+        r = requests.get(f"{BASE_URL}/api/transactions")
+        assert r.status_code == 401
+
+
+# ---------- Delete account (LAST) ----------
+class TestZDeleteAccount:
+    def test_delete_account_then_reseed(self, api):
+        r = api.delete(f"{BASE_URL}/api/user/account", headers=AUTH)
+        assert r.status_code == 200
+        # token should be invalid now
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH)
+        assert me.status_code == 401
+        # re-seed
+        import subprocess
+        res = subprocess.run(["python", "seed_test_user.py"], cwd="/app/backend", capture_output=True, text=True)
+        assert res.returncode == 0, res.stderr
+        # verify re-seed works
+        me2 = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH)
+        assert me2.status_code == 200
