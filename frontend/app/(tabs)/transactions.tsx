@@ -4,7 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  FlatList,
+  SectionList,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -17,16 +17,52 @@ import { TransactionSheet } from "@/src/components/TransactionSheet";
 type Filter = "all" | "expense" | "income";
 
 export default function Transactions() {
-  const { theme, transactions, deleteTransaction, fmt } = useApp();
+  const { theme, transactions, deleteTransaction, fmt, stats } = useApp();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
 
-  const filtered = useMemo(
-    () => transactions.filter((t) => (filter === "all" ? true : t.type === filter)),
-    [transactions, filter],
-  );
+  // Group transactions by calendar month (newest first). Each month gets a
+  // summary (salary + income - expenses) so months can be compared at a glance.
+  const sections = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      title: string;
+      income: number;
+      expenses: number;
+      items: Transaction[];
+    }>();
+    for (const t of transactions) {
+      const d = new Date(t.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          title: d.toLocaleString("en-US", { month: "long", year: "numeric" }),
+          income: 0,
+          expenses: 0,
+          items: [],
+        });
+      }
+      const bucket = map.get(key)!;
+      if (t.type === "income") bucket.income += t.amount;
+      else bucket.expenses += t.amount;
+      if (filter === "all" || t.type === filter) bucket.items.push(t);
+    }
+    return Array.from(map.values())
+      .sort((a, b) => (a.key < b.key ? 1 : -1))
+      .filter((m) => m.items.length > 0)
+      .map((m) => ({
+        key: m.key,
+        title: m.title,
+        salary: stats.salary,
+        income: m.income,
+        expenses: m.expenses,
+        balance: stats.salary + m.income - m.expenses,
+        data: m.items,
+      }));
+  }, [transactions, filter, stats.salary]);
 
   const openAdd = () => {
     setEditing(null);
@@ -84,8 +120,8 @@ export default function Transactions() {
         </View>
       </View>
 
-      <FlatList
-        data={filtered}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{
           paddingHorizontal: SPACING.lg,
@@ -93,6 +129,8 @@ export default function Transactions() {
           paddingBottom: 140,
         }}
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
+        SectionSeparatorComponent={null}
         ListEmptyComponent={
           <View style={styles.empty} testID="transactions-empty">
             <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
@@ -106,6 +144,9 @@ export default function Transactions() {
             </Text>
           </View>
         }
+        renderSectionHeader={({ section }) => (
+          <MonthHeader theme={theme} section={section} fmt={fmt} />
+        )}
         renderItem={({ item }) => (
           <Row theme={theme} item={item} fmt={fmt} onEdit={openEdit} onDelete={remove} />
         )}
@@ -129,6 +170,43 @@ export default function Transactions() {
         editing={editing}
         defaultType={filter === "income" ? "income" : "expense"}
       />
+    </View>
+  );
+}
+
+function MonthHeader({ theme, section, fmt }: any) {
+  const positive = section.balance >= 0;
+  return (
+    <View style={styles.monthHeader} testID={`month-section-${section.key}`}>
+      <View style={styles.monthTitleRow}>
+        <Text style={[styles.monthTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+          {section.title}
+        </Text>
+        <Text
+          testID={`month-balance-${section.key}`}
+          style={[styles.monthBalance, { color: positive ? theme.accentColor : theme.danger, fontFamily: FONTS.display }]}
+        >
+          {fmt(section.balance)}
+        </Text>
+      </View>
+      <View style={[styles.monthSummary, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
+        <MiniStat theme={theme} label="Salary" value={fmt(section.salary)} tint={theme.onSurface} />
+        <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
+        <MiniStat theme={theme} label="Income" value={fmt(section.income)} tint={theme.success} />
+        <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
+        <MiniStat theme={theme} label="Expenses" value={fmt(section.expenses)} tint={theme.danger} />
+      </View>
+    </View>
+  );
+}
+
+function MiniStat({ theme, label, value, tint }: any) {
+  return (
+    <View style={styles.miniStat}>
+      <Text style={[styles.miniLabel, { color: theme.onSurfaceMuted }]}>{label}</Text>
+      <Text style={[styles.miniValue, { color: tint, fontFamily: FONTS.display }]} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -187,6 +265,25 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
   },
   chipText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
+  monthHeader: { marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  monthTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: SPACING.sm,
+  },
+  monthTitle: { fontSize: 24, fontWeight: "500" },
+  monthBalance: { fontSize: 22, fontWeight: "500" },
+  monthSummary: {
+    flexDirection: "row",
+    borderRadius: RADIUS.md,
+    borderWidth: 0.5,
+    paddingVertical: SPACING.md,
+  },
+  miniStat: { flex: 1, alignItems: "center", paddingHorizontal: 4 },
+  miniLabel: { fontFamily: FONTS.body, fontSize: 11, marginBottom: 4 },
+  miniValue: { fontSize: 16, fontWeight: "500" },
+  miniDivider: { width: 0.5 },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, gap: SPACING.md },
   rowIcon: {
     width: 44,
