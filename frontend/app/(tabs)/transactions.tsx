@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   SectionList,
+  Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -13,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import { useApp, Transaction } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { TransactionSheet } from "@/src/components/TransactionSheet";
+import { BalanceTrend } from "@/src/components/BalanceTrend";
 
 type Filter = "all" | "expense" | "income";
 
@@ -63,6 +65,27 @@ export default function Transactions() {
         data: m.items,
       }));
   }, [transactions, filter, stats.salary]);
+
+  // Chronological month-over-month balance for the trend chart (all months,
+  // ignores the active filter).
+  const trend = useMemo(() => {
+    const map = new Map<string, { key: string; date: Date; income: number; expenses: number }>();
+    for (const t of transactions) {
+      const d = new Date(t.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+      if (!map.has(key)) map.set(key, { key, date: d, income: 0, expenses: 0 });
+      const b = map.get(key)!;
+      if (t.type === "income") b.income += t.amount;
+      else b.expenses += t.amount;
+    }
+    return Array.from(map.values())
+      .sort((a, b) => (a.key < b.key ? -1 : 1))
+      .map((m) => ({
+        key: m.key,
+        label: m.date.toLocaleString("en-US", { month: "short" }),
+        balance: stats.salary + m.income - m.expenses,
+      }));
+  }, [transactions, stats.salary]);
 
   const openAdd = () => {
     setEditing(null);
@@ -131,6 +154,9 @@ export default function Transactions() {
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
         SectionSeparatorComponent={null}
+        ListHeaderComponent={
+          trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null
+        }
         ListEmptyComponent={
           <View style={styles.empty} testID="transactions-empty">
             <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
@@ -176,18 +202,42 @@ export default function Transactions() {
 
 function MonthHeader({ theme, section, fmt }: any) {
   const positive = section.balance >= 0;
+
+  const shareMonth = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const message =
+      `${section.title} — Salary Manager\n\n` +
+      `Monthly Salary: ${fmt(section.salary)}\n` +
+      `Extra Income: ${fmt(section.income)}\n` +
+      `Expenses: ${fmt(section.expenses)}\n` +
+      `Balance: ${fmt(section.balance)}`;
+    try {
+      await Share.share({ message, title: `${section.title} Summary` });
+    } catch {}
+  };
+
   return (
     <View style={styles.monthHeader} testID={`month-section-${section.key}`}>
       <View style={styles.monthTitleRow}>
         <Text style={[styles.monthTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
           {section.title}
         </Text>
-        <Text
-          testID={`month-balance-${section.key}`}
-          style={[styles.monthBalance, { color: positive ? theme.accentColor : theme.danger, fontFamily: FONTS.display }]}
-        >
-          {fmt(section.balance)}
-        </Text>
+        <View style={styles.monthTitleRight}>
+          <Text
+            testID={`month-balance-${section.key}`}
+            style={[styles.monthBalance, { color: positive ? theme.accentColor : theme.danger, fontFamily: FONTS.display }]}
+          >
+            {fmt(section.balance)}
+          </Text>
+          <Pressable
+            testID={`share-month-${section.key}`}
+            onPress={shareMonth}
+            hitSlop={8}
+            style={[styles.shareBtn, { backgroundColor: theme.brandTertiary }]}
+          >
+            <Feather name="share-2" size={15} color={theme.accentColor} />
+          </Pressable>
+        </View>
       </View>
       <View style={[styles.monthSummary, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
         <MiniStat theme={theme} label="Salary" value={fmt(section.salary)} tint={theme.onSurface} />
@@ -273,7 +323,15 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   monthTitle: { fontSize: 24, fontWeight: "500" },
+  monthTitleRight: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   monthBalance: { fontSize: 22, fontWeight: "500" },
+  shareBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   monthSummary: {
     flexDirection: "row",
     borderRadius: RADIUS.md,
