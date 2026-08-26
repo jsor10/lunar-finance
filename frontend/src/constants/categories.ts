@@ -21,6 +21,7 @@ export const PRESET_CATEGORIES: Record<"expense" | "income", CategoryDef[]> = {
 
 export function categoryIcon(name?: string): string {
   if (!name) return "tag";
+  if (name.toLowerCase() === "savings") return "target";
   const all = [...PRESET_CATEGORIES.expense, ...PRESET_CATEGORIES.income];
   return all.find((c) => c.name === name)?.icon ?? "tag";
 }

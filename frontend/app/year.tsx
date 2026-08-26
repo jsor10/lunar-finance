@@ -16,13 +16,8 @@ import { useApp } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { shareYearPdf, YearRow } from "@/src/utils/yearPdf";
 
-const MONTH_LABELS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
 export default function YearOverview() {
-  const { theme, user, loading, transactions, salaryFor, fmt } = useApp();
+  const { theme, user, loading, transactions, salaryFor, fmt, t, locale } = useApp();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -50,7 +45,7 @@ export default function YearOverview() {
     const rows: YearRow[] = agg.map((a, m) => {
       const salary = a.has ? salaryFor(year, m) : 0;
       return {
-        label: MONTH_LABELS[m],
+        label: new Date(2000, m, 1).toLocaleString(locale, { month: "long" }),
         has: a.has,
         salary,
         income: a.income,
@@ -62,7 +57,7 @@ export default function YearOverview() {
     const totalExpenses = rows.reduce((s, r) => s + r.expenses, 0);
     const totalSaved = rows.reduce((s, r) => s + (r.has ? r.saved : 0), 0);
     return { rows, totalIncome, totalExpenses, totalSaved };
-  }, [transactions, year, salaryFor]);
+  }, [transactions, year, salaryFor, locale]);
 
   if (!loading && !user) return <Redirect href="/" />;
 
@@ -112,7 +107,7 @@ export default function YearOverview() {
           </Pressable>
         </View>
 
-        <Text style={[styles.kicker, { color: theme.accentColor }]}>OVERVIEW</Text>
+        <Text style={[styles.kicker, { color: theme.accentColor }]}>{t("overview_kicker")}</Text>
         <View style={styles.yearRow}>
           <Pressable
             testID="year-prev"
@@ -143,21 +138,21 @@ export default function YearOverview() {
         {/* Totals */}
         <View style={[styles.totals, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
           <View style={styles.totalCell}>
-            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>INCOME</Text>
+            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>{t("income_u")}</Text>
             <Text style={[styles.totalValue, { color: theme.success, fontFamily: FONTS.display }]}>
               +{fmt(data.totalIncome)}
             </Text>
           </View>
           <View style={[styles.vr, { backgroundColor: theme.border }]} />
           <View style={styles.totalCell}>
-            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>EXPENSES</Text>
+            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>{t("expenses_u")}</Text>
             <Text style={[styles.totalValue, { color: theme.danger, fontFamily: FONTS.display }]}>
               -{fmt(data.totalExpenses)}
             </Text>
           </View>
           <View style={[styles.vr, { backgroundColor: theme.border }]} />
           <View style={styles.totalCell}>
-            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>SAVED</Text>
+            <Text style={[styles.totalLabel, { color: theme.onSurfaceMuted }]}>{t("saved_u")}</Text>
             <Text
               testID="year-total-saved"
               style={[styles.totalValue, { color: theme.accentColor, fontFamily: FONTS.display }]}
@@ -202,9 +197,7 @@ export default function YearOverview() {
           ))}
         </View>
 
-        <Text style={[styles.note, { color: theme.onSurfaceMuted }]}>
-          Saved = salary + extra income − expenses, per month with activity.
-        </Text>
+        <Text style={[styles.note, { color: theme.onSurfaceMuted }]}>{t("year_note")}</Text>
       </ScrollView>
     </View>
   );

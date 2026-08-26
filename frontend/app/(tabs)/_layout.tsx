@@ -6,7 +6,7 @@ import { useApp } from "@/src/context/AppContext";
 import { FONTS } from "@/src/theme/fonts";
 
 export default function TabsLayout() {
-  const { theme } = useApp();
+  const { theme, t } = useApp();
 
   return (
     <Tabs
@@ -17,7 +17,7 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: theme.surfaceSecondary,
           borderTopColor: theme.border,
-          borderTopWidth: StyleWidth(),
+          borderTopWidth: 0.5,
           height: Platform.OS === "ios" ? 88 : 68,
           paddingTop: 8,
           paddingBottom: Platform.OS === "ios" ? 30 : 10,
@@ -28,28 +28,31 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t("tab_home"),
           tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="transactions"
         options={{
-          title: "Activity",
+          title: t("tab_activity"),
           tabBarIcon: ({ color, size }) => <Feather name="list" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="savings"
+        options={{
+          title: t("tab_savings"),
+          tabBarIcon: ({ color, size }) => <Feather name="target" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
+          title: t("tab_settings"),
           tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} />,
         }}
       />
     </Tabs>
   );
-}
-
-function StyleWidth() {
-  return 0.5;
 }

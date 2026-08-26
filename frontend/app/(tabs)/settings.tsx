@@ -18,20 +18,27 @@ import { useApp } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { SheetModal } from "@/src/components/SheetModal";
 import { ACCENT_LIST, ACCENT_META, CURRENCIES, CurrencyCode, Accent } from "@/src/theme/colors";
+import { LANGS } from "@/src/i18n";
+import { exportCsv } from "@/src/utils/exportCsv";
 import { useCountdown, formatDuration } from "@/src/hooks/useCountdown";
 
 export default function Settings() {
   const {
     theme,
     user,
+    transactions,
+    goals,
     setMode,
     setAccent,
     setCurrency,
+    setLanguage,
     updateName,
     logout,
     deleteAccount,
     setDeleteLock,
     resetAllData,
+    t,
+    lang,
   } = useApp();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -39,11 +46,29 @@ export default function Settings() {
   const [nameOpen, setNameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const lockRemaining = useCountdown(user?.delete_lock_until);
 
   const doLogout = async () => {
     await logout();
     router.replace("/login");
+  };
+
+  const doExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportCsv({
+        transactions,
+        goals,
+        salaryHistory: user?.salary_history || [],
+        salary: user?.salary || 0,
+        currency: user?.currency || "EUR",
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {} finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -57,25 +82,25 @@ export default function Settings() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.pageTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-          Settings
+          {t("settings_title")}
         </Text>
 
         {lockRemaining > 0 ? (
           <View style={[styles.lockBanner, { backgroundColor: theme.brandTertiary }]} testID="settings-lock-banner">
             <Feather name="lock" size={16} color={theme.danger} />
             <Text style={[styles.lockText, { color: theme.onSurface }]}>
-              Deletion locked · {formatDuration(lockRemaining)}
+              {t("deletion_locked")} · {formatDuration(lockRemaining)}
             </Text>
           </View>
         ) : null}
 
         {/* Personal Information */}
-        <SectionLabel theme={theme}>Personal Information</SectionLabel>
+        <SectionLabel theme={theme}>{t("personal_info")}</SectionLabel>
         <Card theme={theme}>
           <RowItem
             theme={theme}
             icon="user"
-            label="Name"
+            label={t("name_label")}
             value={user?.name || "—"}
             action={
               <Pressable testID="edit-name-button" onPress={() => setNameOpen(true)} hitSlop={8}>
@@ -84,20 +109,20 @@ export default function Settings() {
             }
           />
           <Divider theme={theme} />
-          <RowItem theme={theme} icon="mail" label="Email" value={user?.email || "—"} />
+          <RowItem theme={theme} icon="mail" label={t("email_label")} value={user?.email || "—"} />
           <Divider theme={theme} />
-          <RowItem theme={theme} icon="lock" label="Password" value="•••••••• · Google" />
+          <RowItem theme={theme} icon="lock" label={t("password_label")} value="•••••••• · Google" />
         </Card>
 
         {/* Interface Design */}
-        <SectionLabel theme={theme}>Interface Design</SectionLabel>
+        <SectionLabel theme={theme}>{t("interface_design")}</SectionLabel>
         <Card theme={theme}>
           <View style={styles.rowItem}>
             <View style={styles.rowLeft}>
               <View style={[styles.rowIcon, { backgroundColor: theme.brandTertiary }]}>
                 <Feather name="moon" size={16} color={theme.accentColor} />
               </View>
-              <Text style={[styles.rowLabel, { color: theme.onSurface }]}>Dark Mode</Text>
+              <Text style={[styles.rowLabel, { color: theme.onSurface }]}>{t("dark_mode")}</Text>
             </View>
             <Switch
               testID="dark-mode-switch"
@@ -113,7 +138,7 @@ export default function Settings() {
           <Divider theme={theme} />
           <View style={styles.accentBlock}>
             <Text style={[styles.rowLabel, { color: theme.onSurface, marginBottom: SPACING.md }]}>
-              Accent Color
+              {t("accent_color")}
             </Text>
             <View style={styles.accentRow}>
               {ACCENT_LIST.map((a: Accent) => {
@@ -148,7 +173,7 @@ export default function Settings() {
         </Card>
 
         {/* Currency */}
-        <SectionLabel theme={theme}>Currency</SectionLabel>
+        <SectionLabel theme={theme}>{t("currency_label")}</SectionLabel>
         <Card theme={theme}>
           <View style={styles.currencyRow}>
             {(Object.keys(CURRENCIES) as CurrencyCode[]).map((c) => {
@@ -187,8 +212,39 @@ export default function Settings() {
           </View>
         </Card>
 
+        {/* Language */}
+        <SectionLabel theme={theme}>{t("language_label")}</SectionLabel>
+        <Card theme={theme}>
+          <View style={styles.currencyRow}>
+            {LANGS.map((l) => {
+              const active = lang === l.code;
+              return (
+                <Pressable
+                  key={l.code}
+                  testID={`language-${l.code}`}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setLanguage(l.code);
+                  }}
+                  style={[
+                    styles.currencyItem,
+                    { backgroundColor: active ? theme.accentColor : theme.surfaceTertiary },
+                  ]}
+                >
+                  <Text style={styles.langFlag}>{l.flag}</Text>
+                  <Text
+                    style={[styles.currencyCode, { color: active ? theme.onPrimary : theme.onSurfaceMuted }]}
+                  >
+                    {l.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+
         {/* Data */}
-        <SectionLabel theme={theme}>Data</SectionLabel>
+        <SectionLabel theme={theme}>{t("data_label")}</SectionLabel>
         <Card theme={theme}>
           <Pressable
             testID="reset-data-button"
@@ -200,25 +256,44 @@ export default function Settings() {
                 <Feather name="rotate-ccw" size={16} color={theme.danger} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.rowLabel, { color: theme.onSurface }]}>Reset All Data</Text>
+                <Text style={[styles.rowLabel, { color: theme.onSurface }]}>{t("reset_all_data")}</Text>
                 <Text style={[styles.rowValue, { color: theme.onSurfaceMuted }]}>
-                  Erase all entries & reset salary
+                  {t("reset_sub")}
                 </Text>
               </View>
             </View>
             <Feather name="chevron-right" size={18} color={theme.onSurfaceMuted} />
           </Pressable>
+          <Divider theme={theme} />
+          <Pressable testID="export-csv-button" onPress={doExport} style={styles.rowItem}>
+            <View style={styles.rowLeft}>
+              <View style={[styles.rowIcon, { backgroundColor: theme.brandTertiary }]}>
+                <Feather name="download" size={16} color={theme.accentColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: theme.onSurface }]}>{t("export_csv")}</Text>
+                <Text style={[styles.rowValue, { color: theme.onSurfaceMuted }]}>
+                  {t("export_csv_sub")}
+                </Text>
+              </View>
+            </View>
+            {exporting ? (
+              <ActivityIndicator size="small" color={theme.accentColor} />
+            ) : (
+              <Feather name="chevron-right" size={18} color={theme.onSurfaceMuted} />
+            )}
+          </Pressable>
         </Card>
 
         {/* Account */}
-        <SectionLabel theme={theme}>Account</SectionLabel>
+        <SectionLabel theme={theme}>{t("account_label")}</SectionLabel>
         <Card theme={theme}>
           <Pressable testID="logout-button" onPress={doLogout} style={styles.rowItem}>
             <View style={styles.rowLeft}>
               <View style={[styles.rowIcon, { backgroundColor: theme.brandTertiary }]}>
                 <Feather name="log-out" size={16} color={theme.accentColor} />
               </View>
-              <Text style={[styles.rowLabel, { color: theme.onSurface }]}>Log Out</Text>
+              <Text style={[styles.rowLabel, { color: theme.onSurface }]}>{t("log_out")}</Text>
             </View>
             <Feather name="chevron-right" size={18} color={theme.onSurfaceMuted} />
           </Pressable>
@@ -234,7 +309,7 @@ export default function Settings() {
                 <Feather name="trash-2" size={16} color={theme.danger} />
               </View>
               <Text style={[styles.rowLabel, { color: theme.danger }]}>
-                {lockRemaining > 0 ? `Locked · ${formatDuration(lockRemaining)}` : "Delete Account"}
+                {lockRemaining > 0 ? `${t("locked_word")} · ${formatDuration(lockRemaining)}` : t("delete_account")}
               </Text>
             </View>
             {lockRemaining > 0 ? (
@@ -271,7 +346,7 @@ export default function Settings() {
 }
 
 function NameSheet({ visible, onClose, current, onSave }: any) {
-  const { theme } = useApp();
+  const { theme, t } = useApp();
   const [name, setName] = useState(current);
   const [saving, setSaving] = useState(false);
   const ref = useRef<TextInput>(null);
@@ -296,13 +371,13 @@ function NameSheet({ visible, onClose, current, onSave }: any) {
   };
 
   return (
-    <SheetModal visible={visible} onClose={onClose} title="Edit Name" testID="name-sheet">
+    <SheetModal visible={visible} onClose={onClose} title={t("edit_name")} testID="name-sheet">
       <TextInput
         ref={ref}
         testID="name-input"
         value={name}
         onChangeText={setName}
-        placeholder="Your name"
+        placeholder={t("your_name_ph")}
         placeholderTextColor={theme.onSurfaceMuted}
         style={[
           styles.sheetInput,
@@ -318,7 +393,7 @@ function NameSheet({ visible, onClose, current, onSave }: any) {
         {saving ? (
           <ActivityIndicator color={theme.onPrimary} />
         ) : (
-          <Text style={[styles.sheetBtnText, { color: theme.onPrimary }]}>Save</Text>
+          <Text style={[styles.sheetBtnText, { color: theme.onPrimary }]}>{t("save")}</Text>
         )}
       </Pressable>
     </SheetModal>
@@ -326,7 +401,7 @@ function NameSheet({ visible, onClose, current, onSave }: any) {
 }
 
 function ResetSheet({ visible, onClose, onConfirm }: any) {
-  const { theme } = useApp();
+  const { theme, t } = useApp();
   const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
@@ -341,11 +416,8 @@ function ResetSheet({ visible, onClose, onConfirm }: any) {
   };
 
   return (
-    <SheetModal visible={visible} onClose={onClose} title="Reset All Data" testID="reset-sheet">
-      <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>
-        This erases every expense and extra income entry across all months and resets your
-        monthly salary to zero. Your categories and settings are kept. This cannot be undone.
-      </Text>
+    <SheetModal visible={visible} onClose={onClose} title={t("reset_title")} testID="reset-sheet">
+      <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>{t("reset_hint")}</Text>
       <Pressable
         testID="reset-confirm-button"
         onPress={confirm}
@@ -355,18 +427,18 @@ function ResetSheet({ visible, onClose, onConfirm }: any) {
         {busy ? (
           <ActivityIndicator color="#FFFFFF" />
         ) : (
-          <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>Erase All Entries</Text>
+          <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>{t("erase_all_btn")}</Text>
         )}
       </Pressable>
       <Pressable testID="reset-cancel-button" onPress={onClose} style={styles.cancelBtn}>
-        <Text style={[styles.cancelText, { color: theme.onSurfaceSecondary }]}>Cancel</Text>
+        <Text style={[styles.cancelText, { color: theme.onSurfaceSecondary }]}>{t("cancel")}</Text>
       </Pressable>
     </SheetModal>
   );
 }
 
 function DeleteSheet({ visible, onClose, onLock, onConfirm }: any) {
-  const { theme } = useApp();
+  const { theme, t } = useApp();
   const [text, setText] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [step, setStep] = useState<"verify" | "confirm">("verify");
@@ -410,14 +482,15 @@ function DeleteSheet({ visible, onClose, onLock, onConfirm }: any) {
     <SheetModal
       visible={visible}
       onClose={onClose}
-      title={step === "verify" ? "Delete Account" : "Are you sure?"}
+      title={step === "verify" ? t("delete_title") : t("are_you_sure")}
       testID="delete-sheet"
     >
       {step === "verify" ? (
         <>
           <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>
-            This permanently erases your salary, entries and settings. Type{" "}
-            <Text style={{ color: theme.danger, fontWeight: "700" }}>DELETE</Text> to continue.
+            {t("delete_hint_verify")}{" "}
+            <Text style={{ color: theme.danger, fontWeight: "700" }}>DELETE</Text>{" "}
+            {t("delete_hint_continue")}
           </Text>
           <TextInput
             testID="delete-confirm-input"
@@ -433,7 +506,7 @@ function DeleteSheet({ visible, onClose, onLock, onConfirm }: any) {
           />
           {attempts > 0 ? (
             <Text style={[styles.attemptsText, { color: theme.danger }]} testID="delete-attempts">
-              Incorrect. {remainingAttempts} attempt{remainingAttempts === 1 ? "" : "s"} left before a 10-minute lock.
+              {t("incorrect_attempts").replace("{n}", String(remainingAttempts))}
             </Text>
           ) : null}
           <Pressable
@@ -441,13 +514,13 @@ function DeleteSheet({ visible, onClose, onLock, onConfirm }: any) {
             onPress={verify}
             style={[styles.sheetBtn, { backgroundColor: theme.danger }]}
           >
-            <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>Verify</Text>
+            <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>{t("verify_btn")}</Text>
           </Pressable>
         </>
       ) : (
         <>
           <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>
-            This cannot be undone. All your data will be permanently deleted.
+            {t("delete_hint_final")}
           </Text>
           <Pressable
             testID="delete-final-button"
@@ -458,11 +531,11 @@ function DeleteSheet({ visible, onClose, onLock, onConfirm }: any) {
             {busy ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>Delete Permanently</Text>
+              <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>{t("delete_permanently")}</Text>
             )}
           </Pressable>
           <Pressable testID="delete-cancel-button" onPress={onClose} style={styles.cancelBtn}>
-            <Text style={[styles.cancelText, { color: theme.onSurfaceSecondary }]}>Cancel</Text>
+            <Text style={[styles.cancelText, { color: theme.onSurfaceSecondary }]}>{t("cancel")}</Text>
           </Pressable>
         </>
       )}
@@ -563,6 +636,7 @@ const styles = StyleSheet.create({
   },
   currencySymbol: { fontSize: 26, fontWeight: "500" },
   currencyCode: { fontFamily: FONTS.body, fontSize: 12, fontWeight: "600", marginTop: 2 },
+  langFlag: { fontSize: 24 },
   sheetInput: {
     height: 54,
     borderRadius: RADIUS.md,

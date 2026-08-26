@@ -10,11 +10,17 @@ import {
 import * as Haptics from "expo-haptics";
 
 import { SheetModal } from "@/src/components/SheetModal";
-import { useApp } from "@/src/context/AppContext";
+import { useApp, Goal } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 
-export function GoalSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { theme, user, setGoal, deleteGoal, currencySymbol } = useApp();
+type Props = {
+  visible: boolean;
+  onClose: () => void;
+  editing?: Goal | null;
+};
+
+export function GoalSheet({ visible, onClose, editing }: Props) {
+  const { theme, createGoal, updateGoal, removeGoal, currencySymbol, t } = useApp();
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
   const [saving, setSaving] = useState(false);
@@ -22,19 +28,20 @@ export function GoalSheet({ visible, onClose }: { visible: boolean; onClose: () 
 
   useEffect(() => {
     if (visible) {
-      setName(user?.goal?.name || "");
-      setTarget(user?.goal?.target ? String(user.goal.target) : "");
-      const t = setTimeout(() => nameRef.current?.focus(), 250);
-      return () => clearTimeout(t);
+      setName(editing?.name || "");
+      setTarget(editing?.target ? String(editing.target) : "");
+      const timer = setTimeout(() => nameRef.current?.focus(), 250);
+      return () => clearTimeout(timer);
     }
-  }, [visible, user?.goal]);
+  }, [visible, editing]);
 
   const save = async () => {
     const num = parseFloat(target.replace(",", "."));
     if (!name.trim() || isNaN(num) || num <= 0) return;
     setSaving(true);
     try {
-      await setGoal(name.trim(), num);
+      if (editing) await updateGoal(editing.id, name.trim(), num);
+      else await createGoal(name.trim(), num);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
     } finally {
@@ -42,10 +49,11 @@ export function GoalSheet({ visible, onClose }: { visible: boolean; onClose: () 
     }
   };
 
-  const removeGoal = async () => {
+  const remove = async () => {
+    if (!editing) return;
     setSaving(true);
     try {
-      await deleteGoal();
+      await removeGoal(editing.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       onClose();
     } finally {
@@ -57,18 +65,16 @@ export function GoalSheet({ visible, onClose }: { visible: boolean; onClose: () 
     <SheetModal
       visible={visible}
       onClose={onClose}
-      title={user?.goal ? "Edit Savings Goal" : "Savings Goal"}
+      title={editing ? t("edit_goal_title") : t("new_goal_title")}
       testID="goal-sheet"
     >
-      <Text style={[styles.hint, { color: theme.onSurfaceMuted }]}>
-        Every month&apos;s leftover balance counts toward your goal.
-      </Text>
+      <Text style={[styles.hint, { color: theme.onSurfaceMuted }]}>{t("goal_hint")}</Text>
       <TextInput
         ref={nameRef}
         testID="goal-name-input"
         value={name}
         onChangeText={setName}
-        placeholder="Goal name (e.g. Trip to Japan)"
+        placeholder={t("goal_name_ph")}
         placeholderTextColor={theme.onSurfaceMuted}
         maxLength={40}
         style={[
@@ -101,12 +107,12 @@ export function GoalSheet({ visible, onClose }: { visible: boolean; onClose: () 
         {saving ? (
           <ActivityIndicator color={theme.onPrimary} />
         ) : (
-          <Text style={[styles.btnText, { color: theme.onPrimary }]}>Save Goal</Text>
+          <Text style={[styles.btnText, { color: theme.onPrimary }]}>{t("save_goal")}</Text>
         )}
       </Pressable>
-      {user?.goal ? (
-        <Pressable testID="goal-delete-button" onPress={removeGoal} style={styles.deleteBtn}>
-          <Text style={[styles.deleteText, { color: theme.danger }]}>Remove Goal</Text>
+      {editing ? (
+        <Pressable testID="goal-delete-button" onPress={remove} style={styles.deleteBtn}>
+          <Text style={[styles.deleteText, { color: theme.danger }]}>{t("remove_goal")}</Text>
         </Pressable>
       ) : null}
     </SheetModal>

@@ -53,6 +53,7 @@ class SettingsUpdate(BaseModel):
     theme: Optional[str] = None
     accent: Optional[str] = None
     currency: Optional[str] = None
+    language: Optional[str] = None
 
 
 class SalaryUpdate(BaseModel):
@@ -74,6 +75,15 @@ class CategoryInput(BaseModel):
 class GoalInput(BaseModel):
     name: str
     target: float
+
+
+class ContributionInput(BaseModel):
+    amount: float
+
+
+class HideCategoryInput(BaseModel):
+    name: str
+    type: str  # 'expense' | 'income'
 
 
 class TemplateInput(BaseModel):
@@ -99,7 +109,8 @@ def user_public(u: dict) -> dict:
         "currency": u.get("currency", "EUR"),
         "delete_lock_until": u.get("delete_lock_until"),
         "custom_categories": u.get("custom_categories", []),
-        "goal": u.get("goal"),
+        "hidden_categories": u.get("hidden_categories", []),
+        "language": u.get("language", "en"),
         "salary_history": u.get("salary_history", []),
     }
 
@@ -190,6 +201,8 @@ async def update_profile(payload: ProfileUpdate, user: dict = Depends(get_curren
 @api_router.put("/user/settings")
 async def update_settings(payload: SettingsUpdate, user: dict = Depends(get_current_user)):
     updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if "language" in updates and updates["language"] not in ("en", "fr", "es"):
+        raise HTTPException(status_code=400, detail="Invalid language")
     if updates:
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": updates})
     u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -240,6 +253,25 @@ async def delete_category(cat_id: str, user: dict = Depends(get_current_user)):
     return user_public(u)
 
 
+@api_router.post("/categories/hide")
+async def hide_category(payload: HideCategoryInput, user: dict = Depends(get_current_user)):
+    if payload.type not in ("expense", "income"):
+        raise HTTPException(status_code=400, detail="Invalid type")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    if name.lower() == "other":
+        raise HTTPException(status_code=400, detail="The Other category cannot be removed")
+    hidden = user.get("hidden_categories", [])
+    if not any(h["name"] == name and h["type"] == payload.type for h in hidden):
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$push": {"hidden_categories": {"name": name, "type": payload.type}}},
+        )
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(u)
+
+
 # ---------- Finance ----------
 @api_router.put("/finance/salary")
 async def update_salary(payload: SalaryUpdate, user: dict = Depends(get_current_user)):
@@ -255,30 +287,109 @@ async def update_salary(payload: SalaryUpdate, user: dict = Depends(get_current_
     return user_public(u)
 
 
-# ---------- Savings goal ----------
-@api_router.put("/users/goal")
-async def set_goal(payload: GoalInput, user: dict = Depends(get_current_user)):
+# ---------- Savings goals (multiple) ----------
+def goal_public(g: dict) -> dict:
+    return {
+        "id": g["id"],
+        "name": g["name"],
+        "target": g["target"],
+        "saved": g.get("saved", 0),
+        "created_at": g["created_at"],
+    }
+
+
+@api_router.get("/goals")
+async def list_goals(user: dict = Depends(get_current_user)):
+    goals = await db.goals.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    return [goal_public(g) for g in goals]
+
+
+@api_router.post("/goals")
+async def create_goal(payload: GoalInput, user: dict = Depends(get_current_user)):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name required")
     if payload.target <= 0:
         raise HTTPException(status_code=400, detail="Target must be positive")
-    existing = user.get("goal") or {}
-    goal = {
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
         "name": name,
         "target": payload.target,
-        "created_at": existing.get("created_at", now_utc().isoformat()),
+        "saved": 0,
+        "created_at": now_utc().isoformat(),
     }
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"goal": goal}})
-    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    return user_public(u)
+    await db.goals.insert_one(doc)
+    return goal_public(doc)
 
 
-@api_router.delete("/users/goal")
-async def delete_goal(user: dict = Depends(get_current_user)):
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"goal": None}})
+@api_router.put("/goals/{goal_id}")
+async def update_goal(goal_id: str, payload: GoalInput, user: dict = Depends(get_current_user)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    if payload.target <= 0:
+        raise HTTPException(status_code=400, detail="Target must be positive")
+    result = await db.goals.update_one(
+        {"id": goal_id, "user_id": user["user_id"]},
+        {"$set": {"name": name, "target": payload.target}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    g = await db.goals.find_one({"id": goal_id}, {"_id": 0})
+    return goal_public(g)
+
+
+@api_router.delete("/goals/{goal_id}")
+async def delete_savings_goal(goal_id: str, user: dict = Depends(get_current_user)):
+    result = await db.goals.delete_one({"id": goal_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return {"ok": True}
+
+
+@api_router.post("/goals/{goal_id}/contribute")
+async def contribute_to_goal(goal_id: str, payload: ContributionInput, user: dict = Depends(get_current_user)):
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    goal = await db.goals.find_one({"id": goal_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    # Ensure the "Savings" expense category exists for this user.
+    has_savings = any(
+        c["name"].lower() == "savings" and c["type"] == "expense"
+        for c in user.get("custom_categories", [])
+    )
+    user_updates = {}
+    if not has_savings:
+        user_updates["$push"] = {
+            "custom_categories": {"id": str(uuid.uuid4()), "name": "Savings", "type": "expense"}
+        }
+    hidden = [
+        h for h in user.get("hidden_categories", [])
+        if not (h["name"].lower() == "savings" and h["type"] == "expense")
+    ]
+    if len(hidden) != len(user.get("hidden_categories", [])):
+        user_updates.setdefault("$set", {})["hidden_categories"] = hidden
+    if user_updates:
+        await db.users.update_one({"user_id": user["user_id"]}, user_updates)
+    # Log the contribution as an expense transaction.
+    tx = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "type": "expense",
+        "amount": abs(payload.amount),
+        "description": goal["name"],
+        "category": "Savings",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.transactions.insert_one(tx)
+    tx.pop("_id", None)
+    tx.pop("user_id", None)
+    await db.goals.update_one({"id": goal_id}, {"$inc": {"saved": abs(payload.amount)}})
+    g = await db.goals.find_one({"id": goal_id}, {"_id": 0})
     u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    return user_public(u)
+    return {"goal": goal_public(g), "transaction": tx, "user": user_public(u)}
 
 
 # ---------- Templates (quick-add) ----------

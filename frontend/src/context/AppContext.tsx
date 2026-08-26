@@ -11,6 +11,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 
 import { api, setToken, clearToken, getToken } from "@/src/api/client";
+import { Lang, LOCALES, translations } from "@/src/i18n";
 import {
   buildTheme,
   Theme,
@@ -32,12 +33,16 @@ export type CustomCategory = {
 };
 
 export type Goal = {
+  id: string;
   name: string;
   target: number;
+  saved: number;
   created_at: string;
 };
 
 export type SalaryEntry = { month: string; salary: number }; // month: "YYYY-MM"
+
+export type HiddenCategory = { name: string; type: "expense" | "income" };
 
 export type Template = {
   id: string;
@@ -58,7 +63,8 @@ export type User = {
   currency: CurrencyCode;
   delete_lock_until: string | null;
   custom_categories: CustomCategory[];
-  goal: Goal | null;
+  hidden_categories: HiddenCategory[];
+  language: Lang;
   salary_history: SalaryEntry[];
 };
 
@@ -95,9 +101,13 @@ type Ctx = {
   currencySymbol: string;
   transactions: Transaction[];
   templates: Template[];
+  goals: Goal[];
   stats: Stats;
   fmt: (n: number) => string;
   salaryFor: (year: number, month0: number) => number;
+  t: (key: string) => string;
+  lang: Lang;
+  locale: string;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   processSessionId: (sid: string) => Promise<void>;
@@ -109,10 +119,14 @@ type Ctx = {
   resetAllData: () => Promise<void>;
   addCategory: (name: string, type: "expense" | "income") => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  hideCategory: (name: string, type: "expense" | "income") => Promise<void>;
   addTemplate: (t: TransactionPayload) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
-  setGoal: (name: string, target: number) => Promise<void>;
-  deleteGoal: () => Promise<void>;
+  createGoal: (name: string, target: number) => Promise<void>;
+  updateGoal: (id: string, name: string, target: number) => Promise<void>;
+  removeGoal: (id: string) => Promise<void>;
+  contributeToGoal: (id: string, amount: number) => Promise<void>;
+  setLanguage: (l: Lang) => Promise<void>;
   updateName: (name: string) => Promise<void>;
   setMode: (m: Mode) => Promise<void>;
   setAccent: (a: Accent) => Promise<void>;
@@ -135,6 +149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   const theme = useMemo(
     () => buildTheme(user?.theme ?? "light", user?.accent ?? "navy"),
@@ -142,12 +157,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loadTransactions = useCallback(async () => {
-    const [tx, tpl] = await Promise.all([
+    const [tx, tpl, gls] = await Promise.all([
       api<Transaction[]>("/transactions"),
       api<Template[]>("/templates"),
+      api<Goal[]>("/goals"),
     ]);
     setTransactions(tx);
     setTemplates(tpl);
+    setGoals(gls);
   }, []);
 
   const bootstrap = useCallback(async () => {
@@ -221,6 +238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setTransactions([]);
     setTemplates([]);
+    setGoals([]);
   }, []);
 
   const setSalary = useCallback(async (v: number) => {
@@ -276,13 +294,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTemplates((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
-  const setGoal = useCallback(async (name: string, target: number) => {
-    const u = await api<User>("/users/goal", { method: "PUT", body: { name, target } });
-    setUser(u);
+  const setGoalState = (g: Goal) =>
+    setGoals((prev) => prev.map((x) => (x.id === g.id ? g : x)));
+
+  const createGoal = useCallback(async (name: string, target: number) => {
+    const g = await api<Goal>("/goals", { method: "POST", body: { name, target } });
+    setGoals((prev) => [...prev, g]);
   }, []);
 
-  const deleteGoal = useCallback(async () => {
-    const u = await api<User>("/users/goal", { method: "DELETE" });
+  const updateGoal = useCallback(async (id: string, name: string, target: number) => {
+    const g = await api<Goal>(`/goals/${id}`, { method: "PUT", body: { name, target } });
+    setGoalState(g);
+  }, []);
+
+  const removeGoal = useCallback(async (id: string) => {
+    await api(`/goals/${id}`, { method: "DELETE" });
+    setGoals((prev) => prev.filter((x) => x.id !== id));
+  }, []);
+
+  const contributeToGoal = useCallback(async (id: string, amount: number) => {
+    const res = await api<{ goal: Goal; transaction: Transaction; user: User }>(
+      `/goals/${id}/contribute`,
+      { method: "POST", body: { amount } },
+    );
+    setGoalState(res.goal);
+    setTransactions((prev) => [res.transaction, ...prev]);
+    setUser(res.user);
+  }, []);
+
+  const hideCategory = useCallback(async (name: string, type: "expense" | "income") => {
+    const u = await api<User>("/categories/hide", { method: "POST", body: { name, type } });
     setUser(u);
   }, []);
 
@@ -305,7 +346,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
-  const patchSettings = useCallback(async (patch: Partial<{ theme: Mode; accent: Accent; currency: CurrencyCode }>) => {
+  const patchSettings = useCallback(async (patch: Partial<{ theme: Mode; accent: Accent; currency: CurrencyCode; language: Lang }>) => {
     setUser((prev) => (prev ? { ...prev, ...patch } : prev));
     const u = await api<User>("/user/settings", { method: "PUT", body: patch });
     setUser(u);
@@ -314,6 +355,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setMode = useCallback((m: Mode) => patchSettings({ theme: m }), [patchSettings]);
   const setAccent = useCallback((a: Accent) => patchSettings({ accent: a }), [patchSettings]);
   const setCurrency = useCallback((c: CurrencyCode) => patchSettings({ currency: c }), [patchSettings]);
+  const setLanguage = useCallback((l: Lang) => patchSettings({ language: l }), [patchSettings]);
 
   const setDeleteLock = useCallback(async (iso: string | null) => {
     const u = await api<User>("/user/delete-lock", { method: "PUT", body: { lock_until: iso } });
@@ -326,6 +368,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setTransactions([]);
     setTemplates([]);
+    setGoals([]);
   }, []);
 
   useEffect(() => {
@@ -401,6 +444,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const currencySymbol = CURRENCIES[currency]?.symbol ?? "€";
   const fmt = useCallback((n: number) => formatMoney(n, currency), [currency]);
 
+  const lang: Lang = user?.language ?? "en";
+  const locale = LOCALES[lang];
+  const t = useCallback(
+    (key: string) => translations[lang]?.[key] ?? translations.en[key] ?? key,
+    [lang],
+  );
+
   const value: Ctx = {
     loading,
     authenticating,
@@ -409,9 +459,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     currencySymbol,
     transactions,
     templates,
+    goals,
     stats,
     fmt,
     salaryFor,
+    t,
+    lang,
+    locale,
     login,
     logout,
     processSessionId,
@@ -423,10 +477,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     resetAllData,
     addCategory,
     deleteCategory,
+    hideCategory,
     addTemplate,
     deleteTemplate,
-    setGoal,
-    deleteGoal,
+    createGoal,
+    updateGoal,
+    removeGoal,
+    contributeToGoal,
+    setLanguage,
     updateName,
     setMode,
     setAccent,

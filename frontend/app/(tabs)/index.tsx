@@ -15,7 +15,6 @@ import { Feather } from "@expo/vector-icons";
 import { useApp } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { SalarySheet } from "@/src/components/SalarySheet";
-import { GoalSheet } from "@/src/components/GoalSheet";
 import { CategoryDonut, DonutSlice } from "@/src/components/CategoryDonut";
 import { useCountdown, formatDuration } from "@/src/hooks/useCountdown";
 
@@ -25,29 +24,10 @@ const CARD_BG_DARK =
   "https://images.pexels.com/photos/30232780/pexels-photo-30232780.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
 export default function Home() {
-  const { theme, user, stats, fmt, transactions, salaryFor } = useApp();
+  const { theme, user, stats, fmt, transactions, t } = useApp();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [salaryOpen, setSalaryOpen] = useState(false);
-  const [goalOpen, setGoalOpen] = useState(false);
-
-  // Total saved = sum of each active month's leftover (salary + income − expenses).
-  const totalSaved = useMemo(() => {
-    const map = new Map<string, { y: number; m: number; inc: number; exp: number }>();
-    for (const t of transactions) {
-      const d = new Date(t.created_at);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (!map.has(key)) map.set(key, { y: d.getFullYear(), m: d.getMonth(), inc: 0, exp: 0 });
-      const b = map.get(key)!;
-      if (t.type === "income") b.inc += t.amount;
-      else b.exp += t.amount;
-    }
-    let sum = 0;
-    map.forEach((b) => {
-      sum += salaryFor(b.y, b.m) + b.inc - b.exp;
-    });
-    return sum;
-  }, [transactions, salaryFor]);
 
   // Spending-by-category donut: this month's expenses, falling back to all time.
   const donut = useMemo(() => {
@@ -77,7 +57,7 @@ export default function Home() {
       data = [...top, { name: "Others", value: rest }];
     }
     const total = data.reduce((s, x) => s + x.value, 0);
-    return { data, total, scope: useMonth ? "This Month" : "All Time" };
+    return { data, total, month: useMonth };
   }, [transactions]);
 
   const lockRemaining = useCountdown(user?.delete_lock_until);
@@ -97,7 +77,7 @@ export default function Home() {
         {/* Greeting */}
         <View style={styles.header} testID="home-header">
           <View>
-            <Text style={[styles.kicker, { color: theme.accentColor }]}>WELCOME BACK</Text>
+            <Text style={[styles.kicker, { color: theme.accentColor }]}>{t("welcome_back")}</Text>
             <Text style={[styles.greeting, { color: theme.onSurface, fontFamily: FONTS.display }]}>
               {firstName}
             </Text>
@@ -111,7 +91,7 @@ export default function Home() {
           >
             <Feather name="lock" size={16} color={theme.danger} />
             <Text style={[styles.lockText, { color: theme.onSurface }]}>
-              Account deletion locked · {formatDuration(lockRemaining)}
+              {t("deletion_locked")} · {formatDuration(lockRemaining)}
             </Text>
           </View>
         ) : null}
@@ -132,13 +112,13 @@ export default function Home() {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.heroContent}>
-            <Text style={styles.heroLabel}>Available Balance</Text>
+            <Text style={styles.heroLabel}>{t("available_balance")}</Text>
             <Text style={styles.heroBalance} testID="available-balance">
               {fmt(stats.availableBalance)}
             </Text>
             <View style={styles.heroRow}>
               <View>
-                <Text style={styles.heroSubLabel}>Monthly Salary</Text>
+                <Text style={styles.heroSubLabel}>{t("monthly_salary")}</Text>
                 <Text style={styles.heroSubValue} testID="monthly-salary">
                   {fmt(stats.salary)}
                 </Text>
@@ -149,7 +129,7 @@ export default function Home() {
                 style={({ pressed }) => [styles.salaryBtn, pressed && { opacity: 0.85 }]}
               >
                 <Feather name="edit-3" size={15} color="#0B1F3B" />
-                <Text style={styles.salaryBtnText}>Salary</Text>
+                <Text style={styles.salaryBtnText}>{t("salary_btn")}</Text>
               </Pressable>
             </View>
           </View>
@@ -161,7 +141,7 @@ export default function Home() {
             width={cardWidth}
             theme={theme}
             icon="arrow-down-left"
-            label="Total Expenses"
+            label={t("total_expenses")}
             value={fmt(stats.totalExpenses)}
             tint={theme.danger}
             testID="total-expenses-card"
@@ -170,90 +150,27 @@ export default function Home() {
             width={cardWidth}
             theme={theme}
             icon="arrow-up-right"
-            label="Extra Income"
+            label={t("extra_income")}
             value={fmt(stats.totalIncome)}
             tint={theme.success}
             testID="extra-income-card"
           />
         </View>
 
-        {/* Savings goal */}
-        {user?.goal ? (
-          <Pressable
-            testID="goal-card"
-            onPress={() => setGoalOpen(true)}
-            style={({ pressed }) => [
-              styles.goalCard,
-              { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <View style={styles.goalTop}>
-              <View style={[styles.goalIcon, { backgroundColor: theme.brandTertiary }]}>
-                <Feather name="target" size={16} color={theme.accentColor} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.goalName, { color: theme.onSurface }]} numberOfLines={1}>
-                  {user.goal.name}
-                </Text>
-                <Text style={[styles.goalSub, { color: theme.onSurfaceMuted }]}>
-                  {fmt(Math.max(totalSaved, 0))} of {fmt(user.goal.target)} saved
-                </Text>
-              </View>
-              <Text
-                testID="goal-percent"
-                style={[styles.goalPct, { color: theme.accentColor, fontFamily: FONTS.display }]}
-              >
-                {Math.min(Math.round((Math.max(totalSaved, 0) / user.goal.target) * 100), 100)}%
-              </Text>
-            </View>
-            <View style={[styles.goalTrack, { backgroundColor: theme.surfaceTertiary }]}>
-              <View
-                style={[
-                  styles.goalFill,
-                  {
-                    backgroundColor: theme.accentColor,
-                    width: `${Math.min((Math.max(totalSaved, 0) / user.goal.target) * 100, 100)}%`,
-                  },
-                ]}
-              />
-            </View>
-          </Pressable>
-        ) : (
-          <Pressable
-            testID="set-goal-button"
-            onPress={() => setGoalOpen(true)}
-            style={({ pressed }) => [
-              styles.goalEmpty,
-              { borderColor: theme.accentColor },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Feather name="target" size={16} color={theme.accentColor} />
-            <Text style={[styles.goalEmptyText, { color: theme.accentColor }]}>
-              Set a savings goal
-            </Text>
-          </Pressable>
-        )}
-
         {/* Spending by category */}
         {donut.total > 0 ? (
           <>
             <SectionHeader
               theme={theme}
-              eyebrow="INSIGHTS"
-              title="Spending by Category"
-              subtitle={
-                donut.scope === "This Month"
-                  ? "Where your money went this month"
-                  : "Where your money has gone so far"
-              }
+              eyebrow={t("insights")}
+              title={t("spending_by_category")}
+              subtitle={donut.month ? t("donut_month_sub") : t("donut_all_sub")}
             />
             <View style={{ marginBottom: SPACING.xl }}>
               <CategoryDonut
                 data={donut.data}
                 total={donut.total}
-                scopeLabel={donut.scope}
+                scopeLabel={donut.month ? t("this_month") : t("all_time")}
                 theme={theme}
                 fmt={fmt}
               />
@@ -263,7 +180,6 @@ export default function Home() {
       </ScrollView>
 
       <SalarySheet visible={salaryOpen} onClose={() => setSalaryOpen(false)} />
-      <GoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
     </View>
   );
 }
@@ -348,38 +264,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
   },
   salaryBtnText: { color: "#0B1F3B", fontFamily: FONTS.body, fontSize: 14, fontWeight: "600" },
-  grid: { flexDirection: "row", gap: SPACING.md, marginBottom: SPACING.md },
-  goalCard: {
-    borderRadius: RADIUS.md,
-    borderWidth: 0.5,
-    padding: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
-  goalTop: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },
-  goalIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  goalName: { fontFamily: FONTS.body, fontSize: 15, fontWeight: "700" },
-  goalSub: { fontFamily: FONTS.body, fontSize: 12, marginTop: 2 },
-  goalPct: { fontSize: 22, fontWeight: "500" },
-  goalTrack: { height: 8, borderRadius: RADIUS.pill, overflow: "hidden" },
-  goalFill: { height: "100%", borderRadius: RADIUS.pill },
-  goalEmpty: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    height: 52,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    marginBottom: SPACING.xl,
-  },
-  goalEmptyText: { fontFamily: FONTS.body, fontSize: 14, fontWeight: "600" },
+  grid: { flexDirection: "row", gap: SPACING.md, marginBottom: SPACING.xl },
   statCard: { borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 0.5 },
   statIcon: {
     width: 36,

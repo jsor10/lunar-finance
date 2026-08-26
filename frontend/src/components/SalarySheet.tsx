@@ -14,7 +14,7 @@ import { useApp } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 
 export function SalarySheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { theme, stats, setSalary, currencySymbol } = useApp();
+  const { theme, stats, setSalary, currencySymbol, t } = useApp();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -22,8 +22,8 @@ export function SalarySheet({ visible, onClose }: { visible: boolean; onClose: (
   useEffect(() => {
     if (visible) {
       setValue(stats.salary ? String(stats.salary) : "");
-      const t = setTimeout(() => inputRef.current?.focus(), 250);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => inputRef.current?.focus(), 250);
+      return () => clearTimeout(timer);
     }
   }, [visible, stats.salary]);
 
@@ -41,10 +41,8 @@ export function SalarySheet({ visible, onClose }: { visible: boolean; onClose: (
   };
 
   return (
-    <SheetModal visible={visible} onClose={onClose} title="Monthly Salary" testID="salary-sheet">
-      <Text style={[styles.hint, { color: theme.onSurfaceMuted }]}>
-        Set your net monthly income. Everything recalculates instantly.
-      </Text>
+    <SheetModal visible={visible} onClose={onClose} title={t("salary_title")} testID="salary-sheet">
+      <Text style={[styles.hint, { color: theme.onSurfaceMuted }]}>{t("salary_hint")}</Text>
       <View style={styles.inputWrap}>
         <Text style={[styles.symbol, { color: theme.accentColor }]}>{currencySymbol}</Text>
         <TextInput
@@ -71,7 +69,7 @@ export function SalarySheet({ visible, onClose }: { visible: boolean; onClose: (
         {saving ? (
           <ActivityIndicator color={theme.onPrimary} />
         ) : (
-          <Text style={[styles.btnText, { color: theme.onPrimary }]}>Save Salary</Text>
+          <Text style={[styles.btnText, { color: theme.onPrimary }]}>{t("save")}</Text>
         )}
       </Pressable>
     </SheetModal>

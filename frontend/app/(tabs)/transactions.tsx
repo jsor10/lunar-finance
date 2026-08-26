@@ -40,7 +40,7 @@ type Group = {
 };
 
 export default function Transactions() {
-  const { theme, transactions, deleteTransaction, deleteMonth, fmt, salaryFor } = useApp();
+  const { theme, transactions, deleteTransaction, deleteMonth, fmt, salaryFor, t, locale } = useApp();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -66,7 +66,7 @@ export default function Transactions() {
       if (!map.has(key)) {
         map.set(key, {
           key,
-          title: d.toLocaleString("en-US", { month: "long", year: "numeric" }),
+          title: d.toLocaleString(locale, { month: "long", year: "numeric" }),
           year: d.getFullYear(),
           month1: d.getMonth() + 1,
           income: 0,
@@ -104,16 +104,16 @@ export default function Transactions() {
           allItems: m.all,
         };
       });
-  }, [transactions, salaryFor]);
+  }, [transactions, salaryFor, locale]);
 
   const trend = useMemo(
     () =>
       months.map((m) => ({
         key: m.key,
-        label: new Date(m.year, m.month1 - 1, 1).toLocaleString("en-US", { month: "short" }),
+        label: new Date(m.year, m.month1 - 1, 1).toLocaleString(locale, { month: "short" }),
         balance: m.balance,
       })),
-    [months],
+    [months, locale],
   );
 
   let idx = selectedKey ? months.findIndex((m) => m.key === selectedKey) : -1;
@@ -199,12 +199,12 @@ export default function Transactions() {
       >
         <View style={styles.pageHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.kicker, { color: theme.accentColor }]}>YOUR MONEY</Text>
+            <Text style={[styles.kicker, { color: theme.accentColor }]}>{t("your_money")}</Text>
             <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-              Activity
+              {t("activity_title")}
             </Text>
             <Text style={[styles.subtitle, { color: theme.onSurfaceMuted }]}>
-              Grouped by category, month by month
+              {t("activity_sub")}
             </Text>
           </View>
           <Pressable
@@ -217,7 +217,7 @@ export default function Transactions() {
             ]}
           >
             <Feather name="calendar" size={14} color={theme.accentColor} />
-            <Text style={[styles.yearBtnText, { color: theme.onSurface }]}>Year</Text>
+            <Text style={[styles.yearBtnText, { color: theme.onSurface }]}>{t("year_btn")}</Text>
           </Pressable>
         </View>
 
@@ -234,8 +234,9 @@ export default function Transactions() {
               onNext={goNext}
               onReset={resetMonth}
               monthKey={current.key}
+              t={t}
             />
-            <MonthHeader theme={theme} section={current} fmt={fmt} />
+            <MonthHeader theme={theme} section={current} fmt={fmt} t={t} />
 
             <View style={styles.columns} testID={`category-columns-${current.key}`}>
               <View style={{ width: colWidth, gap: SPACING.md }}>
@@ -270,10 +271,10 @@ export default function Transactions() {
               <Feather name="inbox" size={26} color={theme.accentColor} />
             </View>
             <Text style={[styles.emptyTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-              No entries yet
+              {t("no_entries_title")}
             </Text>
             <Text style={[styles.emptyText, { color: theme.onSurfaceMuted }]}>
-              Tap the + button to add your first expense or extra income.
+              {t("no_entries_text")}
             </Text>
           </View>
         )}
@@ -370,7 +371,7 @@ function GroupCard({ group, theme, fmt, onEdit, onDelete }: any) {
   );
 }
 
-function MonthNav({ theme, title, canPrev, canNext, onPrev, onNext, onReset, monthKey }: any) {
+function MonthNav({ theme, title, canPrev, canNext, onPrev, onNext, onReset, monthKey, t }: any) {
   return (
     <View style={styles.monthNav} testID={`month-nav-${monthKey}`}>
       <Pressable
@@ -394,7 +395,7 @@ function MonthNav({ theme, title, canPrev, canNext, onPrev, onNext, onReset, mon
         >
           {title}
         </Text>
-        <ResetMonthButton theme={theme} onReset={onReset} monthKey={monthKey} />
+        <ResetMonthButton theme={theme} onReset={onReset} monthKey={monthKey} t={t} />
       </View>
       <Pressable
         testID="month-next"
@@ -413,7 +414,7 @@ function MonthNav({ theme, title, canPrev, canNext, onPrev, onNext, onReset, mon
   );
 }
 
-function ResetMonthButton({ theme, onReset, monthKey }: any) {
+function ResetMonthButton({ theme, onReset, monthKey, t }: any) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -449,12 +450,12 @@ function ResetMonthButton({ theme, onReset, monthKey }: any) {
       ]}
     >
       <Feather name={armed ? "alert-triangle" : "trash-2"} size={13} color={armed ? "#FFFFFF" : theme.danger} />
-      {armed ? <Text style={styles.resetBtnText}>Erase?</Text> : null}
+      {armed ? <Text style={styles.resetBtnText}>{t("erase_q")}</Text> : null}
     </Pressable>
   );
 }
 
-function MonthHeader({ theme, section, fmt }: any) {
+function MonthHeader({ theme, section, fmt, t }: any) {
   const positive = section.balance >= 0;
 
   const shareMonth = async () => {
@@ -493,11 +494,11 @@ function MonthHeader({ theme, section, fmt }: any) {
         </Pressable>
       </View>
       <View style={[styles.monthSummary, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
-        <MiniStat theme={theme} label="Salary" value={fmt(section.salary)} tint={theme.onSurface} />
+        <MiniStat theme={theme} label={t("salary_label")} value={fmt(section.salary)} tint={theme.onSurface} />
         <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
-        <MiniStat theme={theme} label="Income" value={fmt(section.income)} tint={theme.success} />
+        <MiniStat theme={theme} label={t("income_label")} value={fmt(section.income)} tint={theme.success} />
         <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
-        <MiniStat theme={theme} label="Expenses" value={fmt(section.expenses)} tint={theme.danger} />
+        <MiniStat theme={theme} label={t("expenses_label")} value={fmt(section.expenses)} tint={theme.danger} />
       </View>
     </View>
   );

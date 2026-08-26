@@ -13,7 +13,7 @@ import * as Haptics from "expo-haptics";
 
 import { SheetModal } from "@/src/components/SheetModal";
 import { useApp, Transaction } from "@/src/context/AppContext";
-import { PRESET_CATEGORIES } from "@/src/constants/categories";
+import { PRESET_CATEGORIES, categoryIcon } from "@/src/constants/categories";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 
 type Props = {
@@ -34,9 +34,11 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     updateTransaction,
     addCategory,
     deleteCategory,
+    hideCategory,
     addTemplate,
     deleteTemplate,
     currencySymbol,
+    t,
   } = useApp();
   const [type, setType] = useState<"expense" | "income">(defaultType);
   const [amount, setAmount] = useState("");
@@ -70,16 +72,17 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
   }, [visible, editing, defaultType]);
 
   const chips = useMemo<Chip[]>(() => {
-    const presets = PRESET_CATEGORIES[type].map((c) => ({
-      name: c.name,
-      icon: c.icon,
-      custom: false,
-    }));
+    const hidden = user?.hidden_categories || [];
+    const isHidden = (name: string) =>
+      hidden.some((h) => h.name === name && h.type === type);
+    const presets = PRESET_CATEGORIES[type]
+      .filter((c) => !isHidden(c.name))
+      .map((c) => ({ name: c.name, icon: c.icon, custom: false }));
     const customs = (user?.custom_categories || [])
       .filter((c) => c.type === type)
-      .map((c) => ({ name: c.name, icon: "tag", custom: true, id: c.id }));
+      .map((c) => ({ name: c.name, icon: categoryIcon(c.name), custom: true, id: c.id }));
     return [...presets, ...customs];
-  }, [type, user?.custom_categories]);
+  }, [type, user?.custom_categories, user?.hidden_categories]);
 
   const switchType = (t: "expense" | "income") => {
     if (t === type) return;
@@ -100,10 +103,11 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     } catch {}
   };
 
-  const removeCustom = async (c: Chip) => {
-    if (!c.id) return;
+  const removeChip = async (c: Chip) => {
+    if (c.name === "Other") return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    await deleteCategory(c.id);
+    if (c.custom && c.id) await deleteCategory(c.id);
+    else await hideCategory(c.name, type);
     if (category === c.name) setCategory("Other");
   };
 
@@ -155,12 +159,12 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     <SheetModal
       visible={visible}
       onClose={onClose}
-      title={editing ? "Edit Entry" : "New Entry"}
+      title={editing ? t("edit_entry") : t("new_entry")}
       testID="transaction-sheet"
     >
       {!editing && templates.length > 0 ? (
         <>
-          <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>QUICK ADD</Text>
+          <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>{t("quick_add")}</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -198,13 +202,13 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
       ) : null}
 
       <View style={[styles.segment, { backgroundColor: theme.surfaceTertiary }]}>
-        {(["expense", "income"] as const).map((t) => {
-          const active = type === t;
+        {(["expense", "income"] as const).map((opt) => {
+          const active = type === opt;
           return (
             <Pressable
-              key={t}
-              testID={`type-toggle-${t}`}
-              onPress={() => switchType(t)}
+              key={opt}
+              testID={`type-toggle-${opt}`}
+              onPress={() => switchType(opt)}
               style={[
                 styles.segmentItem,
                 active && { backgroundColor: theme.surfaceSecondary },
@@ -216,7 +220,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
                   { color: active ? theme.accentColor : theme.onSurfaceMuted },
                 ]}
               >
-                {t === "expense" ? "Expense" : "Extra Income"}
+                {opt === "expense" ? t("expense_word") : t("extra_income_word")}
               </Text>
             </Pressable>
           );
@@ -241,7 +245,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
         testID="description-input"
         value={description}
         onChangeText={setDescription}
-        placeholder="Description (e.g. Groceries, Freelance)"
+        placeholder={t("desc_placeholder")}
         placeholderTextColor={theme.onSurfaceMuted}
         style={[
           styles.desc,
@@ -253,7 +257,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
         ]}
       />
 
-      <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>CATEGORY</Text>
+      <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>{t("category_label")}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -268,7 +272,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
               key={c.custom ? c.id : c.name}
               testID={`category-chip-${c.name}`}
               onPress={() => setCategory(c.name)}
-              onLongPress={c.custom ? () => removeCustom(c) : undefined}
+              onLongPress={c.name !== "Other" ? () => removeChip(c) : undefined}
               style={[
                 styles.catChip,
                 {
@@ -306,7 +310,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
           ]}
         >
           <Feather name="plus" size={13} color={theme.accentColor} />
-          <Text style={[styles.catChipText, { color: theme.accentColor }]}>New</Text>
+          <Text style={[styles.catChipText, { color: theme.accentColor }]}>{t("new_chip")}</Text>
         </Pressable>
       </ScrollView>
 
@@ -316,7 +320,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
             testID="new-category-input"
             value={newCat}
             onChangeText={setNewCat}
-            placeholder="Category name"
+            placeholder={t("cat_name_placeholder")}
             placeholderTextColor={theme.onSurfaceMuted}
             autoFocus
             maxLength={30}
@@ -363,7 +367,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
             color={saveTpl ? theme.accentColor : theme.onSurfaceMuted}
           />
           <Text style={[styles.tplToggleText, { color: theme.onSurfaceSecondary }]}>
-            Save as quick-add template
+            {t("save_as_template")}
           </Text>
         </Pressable>
       ) : null}
@@ -382,7 +386,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
           <ActivityIndicator color={theme.onPrimary} />
         ) : (
           <Text style={[styles.btnText, { color: theme.onPrimary }]}>
-            {editing ? "Save Changes" : "Add Entry"}
+            {editing ? t("save_changes") : t("add_entry")}
           </Text>
         )}
       </Pressable>
