@@ -30,13 +30,17 @@ Premium, minimalist mobile app to manage monthly finances. Home dashboard (month
 - Per-month collapsible "Category breakdown" in Activity (per-category income/expense totals).
 - Styled PDF export of a month summary via each month's share button (`src/utils/monthPdf.ts`): expo-print + expo-sharing on native (share sheet with PDF); browser print dialog on web. PDF includes stats strip, category breakdown table, and transaction table in the Glass/Luxe style.
 - Verified: 23/23 backend pytest + all frontend category/PDF flows via testing agent (iteration_2.json, no bugs).
+- Activity single-month view: shows one month at a time with left/right arrow navigation (defaults to latest month); filter chips apply within the shown month. Trend chart on top still shows all months.
+- Per-month reset button next to the month name (two-tap confirm "Erase?") → DELETE /api/transactions/month/{year}/{month}.
+- Settings → Data → "Reset All Data" (confirm sheet) → DELETE /api/transactions erases every entry, keeps salary/settings/categories.
+- Home "Spending by Category" donut (react-native-svg): this month's expenses by category with legend (%, amount); falls back to All Time; hidden when no expenses.
+- Verified: 30/30 backend pytest + all frontend flows via testing agent (iteration_3.json, no bugs).
 
 ## Backlog
-- P1: Charts/trends for monthly spending (trend chart done; category charts possible next).
 - P1: Bottom-sheet ScrollView for very small screens (test-noted robustness).
 - P2: Recurring transactions.
-- P2: Tap a trend-chart bar to scroll to that month's section in Activity.
+- P2: Tap a trend-chart bar to jump to that month in the single-month Activity view.
 - P2: Track historical salary changes per month (historical months currently use current global salary).
 
 ## Next Tasks
-- Await user feedback on categories + PDF export.
+- Await user feedback on single-month Activity, resets, and donut.

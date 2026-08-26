@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 3 focus: (a) DELETE /api/transactions and DELETE /api/transactions/month/{year}/{month} (b) Activity single-month view with prev/next arrows + per-month reset (two-tap), (c) Settings Reset All Data flow, (d) Home Spending-by-Category donut. Backend: 30/30 pytest pass — added 7 new tests (delete-month happy path with mongo-seeded April/May 2020 dataset, delete-month invalid low/high 400, auth required 401, empty-month returns {ok:true, deleted:0}, delete-all 401, delete-all happy path with snapshot-and-restore + preserved salary/settings/custom_categories). Frontend (mobile 390x844, token-bypass): Activity defaults to latest month (August 2026), month-nav-title switches on prev/next with correct 0.35 opacity at bounds (prev disabled at oldest, next disabled at newest); filter-income at Aug (no income) shows month-filter-empty; filter-income at July shows the single income row; breakdown-toggle-2026-06 expands breakdown-card-2026-06 correctly; reset-month-2026-05 first tap arms and shows 'Erase?' label, second tap deletes June, view falls back to latest (August) and June no longer appears in the trend chart or nav; FAB → TransactionSheet → category-chip-Food → transaction-save-button saves a new tx with category 'Food' via /api/transactions; share-month-2026-06 triggers window.print exactly once with no JS errors; Settings reset-data-button opens reset-sheet; reset-cancel-button closes without deleting (tx count preserved); reset-confirm-button erases all transactions (count → 0), Activity shows transactions-empty state, Home donut disappears, home salary === available (€3,500), and salary/accent/currency/custom_categories are preserved. Home Spending-by-Category donut renders under 'Spending by Category' with SVG legend rows donut-legend-Gym (69%) and donut-legend-Transport (31%) for August 2026, center total €65.00 and 'THIS MONTH' scope label; after reset-all the donut hides; after re-seeding via /app/backend/tests/seed_multi_month.py + reload it reappears. Regression: donut card renders correctly, FAB + category chips + tx save still work end-to-end, month breakdown toggle still expands, PDF share still triggers Print on web without JS errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "CategoryDonut.tsx", "issue": "Uses deprecated JSX prop 'pointerEvents' on a <View style={styles.center} pointerEvents=\"none\"> (Reference: /app/frontend/src/components/CategoryDonut.tsx:71). React Native Web has already warned about this pattern in prior iterations; migrate to style={{ pointerEvents: 'none', ...styles.center }} to silence the console warning."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/seed_multi_month.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Docs / seed script drift: /app/backend/seed_test_user.py only re-inserts the user + session — it does NOT restore transactions or custom_categories, contrary to main-agent context ('salary 3500 + multi-month transactions Jun-Aug 2026 + Gym custom category'). Either update seed_test_user.py to also seed the 6 canonical Jun/Jul/Aug 2026 transactions + Gym category (see /app/backend/tests/seed_multi_month.py for a working reference), OR update the doc in /app/memory/test_credentials.md / main-agent runbook so future testers know to run the multi-month seeder after any reset.",
+    "Nice-to-have (non-blocking): migrate CategoryDonut.tsx line 71 from JSX prop pointerEvents=\"none\" to style.pointerEvents to remove the remaining RN Web deprecation console warning (same class of warning noted in iterations 1 and 2)."
+  ],
+  "critical_code_review_comments": [
+    "server.py DELETE /api/transactions: uses delete_many({user_id}) scoped to the caller, returns {ok, deleted:count}; auth enforced via get_current_user (401 on missing/expired token). Correct.",
+    "server.py DELETE /api/transactions/month/{year}/{month}: validates 1<=month<=12 (400 outside range), builds `f\"{year:04d}-{month:02d}\"` prefix and uses $regex on created_at — safe since created_at is stored as ISO-8601 with explicit YYYY-MM-DD prefix by create_transaction. Zero-count deletes still return 200 with deleted:0 (verified). Route order is fine (specific /month/{year}/{month} declared before catch-all /{tx_id} so no shadow risk).",
+    "transactions.tsx uses 0-indexed getMonth() to build both the display key (2026-07 for August) AND passes month1 = getMonth()+1 to deleteMonth — this is correct (backend expects 1-12) but the mismatch between the visible key '2026-07' (July key on the wire) and the human month August is confusing when reading testIDs; iteration 2 flagged this and it still applies.",
+    "CategoryDonut correctly guards against total===0 at the caller (index.tsx checks donut.total > 0) so the donut is hidden after Reset All. Slice color palette is deterministic and swaps duplicate colors when accent is gold/emerald — good.",
+    "AppContext.deleteMonth performs an optimistic local filter on created_at.startsWith(prefix) matching the backend regex, so UI updates immediately without a re-fetch. resetAllData mirrors this by setting transactions to [] on success.",
+    "AppContext preserves salary/settings/custom_categories after DELETE /api/transactions since the backend only touches the transactions collection (user doc untouched) — confirmed via /auth/me after reset-all.",
+    "settings.tsx ResetSheet uses SheetModal with two-button pattern (reset-confirm-button destructive, reset-cancel-button neutral). No missing loading state — busy flag disables the confirm while awaiting the API. Good.",
+    "Auth still enforced on both new endpoints; tested 401 without Authorization header.",
+    "server.py imports and structure otherwise unchanged from iteration 2 — no regressions in categories, transactions CRUD, auth/me, salary or delete-lock."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/seed_multi_month.py"
+  ],
+  "success_rate": {
+    "backend": "100% (30/30)",
+    "frontend": "100% of iteration-3 flows verified (activity single-month nav + bounds, filter chips, per-month reset two-tap, FAB add w/ category, PDF share, breakdown toggle, settings reset-all cancel + confirm, donut show/hide + re-seed reappear)"
+  },
+  "seed_data_creation": "Created /app/backend/tests/seed_multi_month.py — re-usable helper that: (1) re-runs seed_test_user.py (user + fixed session token), (2) resets user.custom_categories to a single 'Gym' expense category, (3) deletes any prior transactions and inserts 6 canonical transactions across Jun/Jul/Aug 2026 (Gym fee 55/expense/Gym, Old style 40/expense/Other, Groceries 30/expense/Food, Side gig 200/income/Freelance, Bus pass 20/expense/Transport, Gym 45/expense/Gym). Leaves DB in this seeded state at end of test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth injection: localStorage.setItem('sm_session_token', JSON.stringify('test_session_token_fixed_123456')) then reload — waits ~1.5s and looks for [data-testid=\"home-header\"]. Two things to remember: (1) Some sheet buttons (reset-cancel/confirm, deep-scroll form buttons) sit below the 844-tall viewport — use page.dispatch_event(sel, 'click') to bypass Playwright's 'outside of viewport' check. (2) Category chip row inside TransactionSheet is a horizontal ScrollView; category-chip-Food is technically visible but Playwright sometimes still refuses; dispatch_event 'click' works around this. Month testIDs remain 0-indexed (Aug 2026 => 2026-07, Jul => 2026-06, Jun => 2026-05). To restore the canonical seeded state at any time run: python /app/backend/tests/seed_multi_month.py. The app's own /app/backend/seed_test_user.py only re-inserts user + session (no transactions/categories) — use the helper. Backend regression suite lives in /app/backend/tests/backend_test.py (30 tests, ~6s). The delete-all test snapshots + restores transactions so pytest is idempotent, but TestZDeleteAccount at the end still wipes the user and reseeds only user+session — always run the multi-month seeder afterwards before frontend testing.",
+  "rca_of_issue": "N/A — no bugs found in iteration-3 scope."
+}

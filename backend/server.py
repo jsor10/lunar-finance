@@ -271,6 +271,24 @@ async def update_transaction(tx_id: str, payload: TransactionInput, user: dict =
     return tx
 
 
+@api_router.delete("/transactions")
+async def delete_all_transactions(user: dict = Depends(get_current_user)):
+    result = await db.transactions.delete_many({"user_id": user["user_id"]})
+    return {"ok": True, "deleted": result.deleted_count}
+
+
+@api_router.delete("/transactions/month/{year}/{month}")
+async def delete_month_transactions(year: int, month: int, user: dict = Depends(get_current_user)):
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Invalid month")
+    prefix = f"{year:04d}-{month:02d}"
+    result = await db.transactions.delete_many({
+        "user_id": user["user_id"],
+        "created_at": {"$regex": f"^{prefix}"},
+    })
+    return {"ok": True, "deleted": result.deleted_count}
+
+
 @api_router.delete("/transactions/{tx_id}")
 async def delete_transaction(tx_id: str, user: dict = Depends(get_current_user)):
     result = await db.transactions.delete_one({"id": tx_id, "user_id": user["user_id"]})

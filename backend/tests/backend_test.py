@@ -252,6 +252,134 @@ class TestTransactionsCategory:
         api.delete(f"{BASE_URL}/api/transactions/{r.json()['id']}", headers=AUTH)
 
 
+# ---------- Delete-month + delete-all (NEW) ----------
+def _mongo_db():
+    import os as _os
+    from dotenv import load_dotenv as _load
+    from pathlib import Path as _P
+    from pymongo import MongoClient as _MC
+    _load(_P("/app/backend/.env"))
+    c = _MC(_os.environ["MONGO_URL"])
+    return c[_os.environ["DB_NAME"]]
+
+
+class TestDeleteMonth:
+    """DELETE /api/transactions/month/{year}/{month}"""
+
+    UID = "user_testseed001"
+    # Use created_at prefixes far from "current month" so we don't collide with anything else
+    PFX_KEEP = "2020-05"
+    PFX_DEL = "2020-04"
+
+    def _seed(self):
+        db = _mongo_db()
+        db.transactions.delete_many({"user_id": self.UID,
+                                      "created_at": {"$regex": f"^(2020-04|2020-05)"}})
+        docs = [
+            {"id": f"TEST_dm_del_a_{uuid.uuid4().hex[:6]}", "user_id": self.UID, "type": "expense",
+             "amount": 11.0, "description": "TEST_dm_del_a", "category": "Other",
+             "created_at": f"{self.PFX_DEL}-10T12:00:00+00:00"},
+            {"id": f"TEST_dm_del_b_{uuid.uuid4().hex[:6]}", "user_id": self.UID, "type": "income",
+             "amount": 22.0, "description": "TEST_dm_del_b", "category": "Other",
+             "created_at": f"{self.PFX_DEL}-25T09:00:00+00:00"},
+            {"id": f"TEST_dm_keep_{uuid.uuid4().hex[:6]}", "user_id": self.UID, "type": "expense",
+             "amount": 33.0, "description": "TEST_dm_keep", "category": "Other",
+             "created_at": f"{self.PFX_KEEP}-15T12:00:00+00:00"},
+        ]
+        db.transactions.insert_many(docs)
+        return docs
+
+    def _cleanup(self):
+        db = _mongo_db()
+        db.transactions.delete_many({"user_id": self.UID,
+                                      "created_at": {"$regex": f"^(2020-04|2020-05)"}})
+
+    def test_delete_month_deletes_only_that_month(self, api):
+        seeded = self._seed()
+        try:
+            r = api.delete(f"{BASE_URL}/api/transactions/month/2020/4", headers=AUTH)
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body.get("ok") is True
+            assert body.get("deleted") == 2
+            # verify via GET
+            lst = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+            ids = {t["id"] for t in lst}
+            for d in seeded[:2]:
+                assert d["id"] not in ids, "April tx should be deleted"
+            # keep one intact
+            assert seeded[2]["id"] in ids, "May tx must remain"
+        finally:
+            self._cleanup()
+
+    def test_delete_month_invalid_month_low_returns_400(self, api):
+        r = api.delete(f"{BASE_URL}/api/transactions/month/2026/0", headers=AUTH)
+        assert r.status_code == 400, r.text
+
+    def test_delete_month_invalid_month_high_returns_400(self, api):
+        r = api.delete(f"{BASE_URL}/api/transactions/month/2026/13", headers=AUTH)
+        assert r.status_code == 400, r.text
+
+    def test_delete_month_requires_auth_401(self, api):
+        r = requests.delete(f"{BASE_URL}/api/transactions/month/2026/8")
+        assert r.status_code == 401
+
+    def test_delete_month_empty_returns_zero(self, api):
+        # A guaranteed empty month
+        r = api.delete(f"{BASE_URL}/api/transactions/month/1999/1", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json().get("deleted") == 0
+
+
+class TestDeleteAllTransactions:
+    """DELETE /api/transactions"""
+
+    UID = "user_testseed001"
+
+    def _snapshot_and_restore(self, api, before):
+        """Reinsert the original transactions after the destructive test."""
+        db = _mongo_db()
+        # Best-effort restore: re-insert prior docs (they still have original ids/created_at)
+        if before:
+            for d in before:
+                d.pop("_id", None)
+                d["user_id"] = self.UID
+            db.transactions.insert_many(before)
+
+    def test_delete_all_requires_auth_401(self, api):
+        r = requests.delete(f"{BASE_URL}/api/transactions")
+        assert r.status_code == 401
+
+    def test_delete_all_deletes_transactions_and_keeps_user_settings(self, api):
+        # snapshot user + txs before
+        me_before = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        salary_before = me_before["salary"]
+        cats_before = me_before.get("custom_categories", [])
+        txs_before = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        # add a fresh test tx so we know count >=1
+        add = api.post(f"{BASE_URL}/api/transactions", headers=AUTH,
+                       json={"type": "expense", "amount": 7.7,
+                             "description": "TEST_del_all_marker", "category": "Other"}).json()
+        try:
+            r = api.delete(f"{BASE_URL}/api/transactions", headers=AUTH)
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body.get("ok") is True
+            assert isinstance(body.get("deleted"), int)
+            assert body["deleted"] >= 1
+            # GET should now return empty
+            lst = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+            assert lst == []
+            # user, salary and custom_categories preserved
+            me_after = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+            assert me_after["user_id"] == me_before["user_id"]
+            assert me_after["salary"] == salary_before
+            assert me_after.get("custom_categories", []) == cats_before
+        finally:
+            # Best-effort: restore the seeded transactions so downstream tests / UI have data
+            self._snapshot_and_restore(api, txs_before)
+
+
 # ---------- Delete account (LAST) ----------
 class TestZDeleteAccount:
     def test_delete_account_then_reseed(self, api):

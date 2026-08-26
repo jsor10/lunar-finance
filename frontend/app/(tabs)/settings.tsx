@@ -31,12 +31,14 @@ export default function Settings() {
     logout,
     deleteAccount,
     setDeleteLock,
+    resetAllData,
   } = useApp();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [nameOpen, setNameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const lockRemaining = useCountdown(user?.delete_lock_until);
 
   const doLogout = async () => {
@@ -185,6 +187,29 @@ export default function Settings() {
           </View>
         </Card>
 
+        {/* Data */}
+        <SectionLabel theme={theme}>Data</SectionLabel>
+        <Card theme={theme}>
+          <Pressable
+            testID="reset-data-button"
+            onPress={() => setResetOpen(true)}
+            style={styles.rowItem}
+          >
+            <View style={styles.rowLeft}>
+              <View style={[styles.rowIcon, { backgroundColor: "rgba(192,69,59,0.12)" }]}>
+                <Feather name="rotate-ccw" size={16} color={theme.danger} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: theme.onSurface }]}>Reset All Data</Text>
+                <Text style={[styles.rowValue, { color: theme.onSurfaceMuted }]}>
+                  Erase every expense & extra income entry
+                </Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={18} color={theme.onSurfaceMuted} />
+          </Pressable>
+        </Card>
+
         {/* Account */}
         <SectionLabel theme={theme}>Account</SectionLabel>
         <Card theme={theme}>
@@ -226,6 +251,11 @@ export default function Settings() {
         onClose={() => setNameOpen(false)}
         current={user?.name || ""}
         onSave={updateName}
+      />
+      <ResetSheet
+        visible={resetOpen}
+        onClose={() => setResetOpen(false)}
+        onConfirm={resetAllData}
       />
       <DeleteSheet
         visible={deleteOpen}
@@ -290,6 +320,46 @@ function NameSheet({ visible, onClose, current, onSave }: any) {
         ) : (
           <Text style={[styles.sheetBtnText, { color: theme.onPrimary }]}>Save</Text>
         )}
+      </Pressable>
+    </SheetModal>
+  );
+}
+
+function ResetSheet({ visible, onClose, onConfirm }: any) {
+  const { theme } = useApp();
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await onConfirm();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SheetModal visible={visible} onClose={onClose} title="Reset All Data" testID="reset-sheet">
+      <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>
+        This erases every expense and extra income entry across all months. Your salary,
+        categories and settings are kept. This cannot be undone.
+      </Text>
+      <Pressable
+        testID="reset-confirm-button"
+        onPress={confirm}
+        disabled={busy}
+        style={[styles.sheetBtn, { backgroundColor: theme.danger }]}
+      >
+        {busy ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={[styles.sheetBtnText, { color: "#FFFFFF" }]}>Erase All Entries</Text>
+        )}
+      </Pressable>
+      <Pressable testID="reset-cancel-button" onPress={onClose} style={styles.cancelBtn}>
+        <Text style={[styles.cancelText, { color: theme.onSurfaceSecondary }]}>Cancel</Text>
       </Pressable>
     </SheetModal>
   );

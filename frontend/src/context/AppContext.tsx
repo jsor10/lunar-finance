@@ -85,6 +85,8 @@ type Ctx = {
   addTransaction: (t: TransactionPayload) => Promise<void>;
   updateTransaction: (id: string, t: TransactionPayload) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  deleteMonth: (year: number, month: number) => Promise<void>;
+  resetAllData: () => Promise<void>;
   addCategory: (name: string, type: "expense" | "income") => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   updateName: (name: string) => Promise<void>;
@@ -209,6 +211,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteTransaction = useCallback(async (id: string) => {
     await api(`/transactions/${id}`, { method: "DELETE" });
     setTransactions((prev) => prev.filter((x) => x.id !== id));
+  }, []);
+
+  const deleteMonth = useCallback(async (year: number, month: number) => {
+    await api(`/transactions/month/${year}/${month}`, { method: "DELETE" });
+    const prefix = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+    setTransactions((prev) => prev.filter((x) => !x.created_at.startsWith(prefix)));
+  }, []);
+
+  const resetAllData = useCallback(async () => {
+    await api("/transactions", { method: "DELETE" });
+    setTransactions([]);
   }, []);
 
   const addCategory = useCallback(async (name: string, type: "expense" | "income") => {
@@ -337,6 +350,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    deleteMonth,
+    resetAllData,
     addCategory,
     deleteCategory,
     updateName,

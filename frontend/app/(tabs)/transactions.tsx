@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  SectionList,
+  FlatList,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -19,19 +19,35 @@ import { shareMonthPdf } from "@/src/utils/monthPdf";
 
 type Filter = "all" | "expense" | "income";
 
+type MonthData = {
+  key: string;
+  title: string;
+  year: number;
+  month1: number; // 1-12
+  salary: number;
+  income: number;
+  expenses: number;
+  balance: number;
+  breakdown: { name: string; expense: number; income: number }[];
+  allItems: Transaction[];
+  items: Transaction[];
+};
+
 export default function Transactions() {
-  const { theme, transactions, deleteTransaction, fmt, stats } = useApp();
+  const { theme, transactions, deleteTransaction, deleteMonth, fmt, stats } = useApp();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  // Group transactions by calendar month (newest first). Each month gets a
-  // summary (salary + income - expenses) so months can be compared at a glance.
-  const sections = useMemo(() => {
+  // All months (chronological), each with summary + category breakdown.
+  const months = useMemo<MonthData[]>(() => {
     const map = new Map<string, {
       key: string;
       title: string;
+      year: number;
+      month1: number;
       income: number;
       expenses: number;
       items: Transaction[];
@@ -45,6 +61,8 @@ export default function Transactions() {
         map.set(key, {
           key,
           title: d.toLocaleString("en-US", { month: "long", year: "numeric" }),
+          year: d.getFullYear(),
+          month1: d.getMonth() + 1,
           income: 0,
           expenses: 0,
           items: [],
@@ -64,11 +82,12 @@ export default function Transactions() {
       if (filter === "all" || t.type === filter) bucket.items.push(t);
     }
     return Array.from(map.values())
-      .sort((a, b) => (a.key < b.key ? 1 : -1))
-      .filter((m) => m.items.length > 0)
+      .sort((a, b) => (a.key < b.key ? -1 : 1))
       .map((m) => ({
         key: m.key,
         title: m.title,
+        year: m.year,
+        month1: m.month1,
         salary: stats.salary,
         income: m.income,
         expenses: m.expenses,
@@ -77,30 +96,43 @@ export default function Transactions() {
           (a, b) => b.expense + b.income - (a.expense + a.income),
         ),
         allItems: m.all,
-        data: m.items,
+        items: m.items,
       }));
   }, [transactions, filter, stats.salary]);
 
-  // Chronological month-over-month balance for the trend chart (all months,
-  // ignores the active filter).
-  const trend = useMemo(() => {
-    const map = new Map<string, { key: string; date: Date; income: number; expenses: number }>();
-    for (const t of transactions) {
-      const d = new Date(t.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
-      if (!map.has(key)) map.set(key, { key, date: d, income: 0, expenses: 0 });
-      const b = map.get(key)!;
-      if (t.type === "income") b.income += t.amount;
-      else b.expenses += t.amount;
-    }
-    return Array.from(map.values())
-      .sort((a, b) => (a.key < b.key ? -1 : 1))
-      .map((m) => ({
+  const trend = useMemo(
+    () =>
+      months.map((m) => ({
         key: m.key,
-        label: m.date.toLocaleString("en-US", { month: "short" }),
-        balance: stats.salary + m.income - m.expenses,
-      }));
-  }, [transactions, stats.salary]);
+        label: new Date(m.year, m.month1 - 1, 1).toLocaleString("en-US", { month: "short" }),
+        balance: m.balance,
+      })),
+    [months],
+  );
+
+  let idx = selectedKey ? months.findIndex((m) => m.key === selectedKey) : -1;
+  if (idx === -1) idx = months.length - 1; // default: latest month
+  const current = idx >= 0 ? months[idx] : null;
+
+  const goPrev = () => {
+    if (idx > 0) {
+      Haptics.selectionAsync();
+      setSelectedKey(months[idx - 1].key);
+    }
+  };
+  const goNext = () => {
+    if (idx < months.length - 1) {
+      Haptics.selectionAsync();
+      setSelectedKey(months[idx + 1].key);
+    }
+  };
+
+  const resetMonth = async () => {
+    if (!current) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    await deleteMonth(current.year, current.month1);
+    setSelectedKey(null); // fall back to latest remaining month
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -158,8 +190,8 @@ export default function Transactions() {
         </View>
       </View>
 
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={current ? current.items : []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{
           paddingHorizontal: SPACING.lg,
@@ -167,27 +199,49 @@ export default function Transactions() {
           paddingBottom: 140,
         }}
         showsVerticalScrollIndicator={false}
-        stickySectionHeadersEnabled={false}
-        SectionSeparatorComponent={null}
         ListHeaderComponent={
-          trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null
+          <>
+            {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null}
+            {current ? (
+              <>
+                <MonthNav
+                  theme={theme}
+                  title={current.title}
+                  canPrev={idx > 0}
+                  canNext={idx < months.length - 1}
+                  onPrev={goPrev}
+                  onNext={goNext}
+                  onReset={resetMonth}
+                  monthKey={current.key}
+                />
+                <MonthHeader theme={theme} section={current} fmt={fmt} />
+                {current.items.length === 0 ? (
+                  <Text
+                    testID="month-filter-empty"
+                    style={[styles.filterEmpty, { color: theme.onSurfaceMuted }]}
+                  >
+                    No {filter === "expense" ? "expenses" : "extra income"} this month.
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+          </>
         }
         ListEmptyComponent={
-          <View style={styles.empty} testID="transactions-empty">
-            <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
-              <Feather name="inbox" size={26} color={theme.accentColor} />
+          !current ? (
+            <View style={styles.empty} testID="transactions-empty">
+              <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
+                <Feather name="inbox" size={26} color={theme.accentColor} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+                No entries yet
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.onSurfaceMuted }]}>
+                Tap the + button to add your first expense or extra income.
+              </Text>
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-              No entries yet
-            </Text>
-            <Text style={[styles.emptyText, { color: theme.onSurfaceMuted }]}>
-              Tap the + button to add your first expense or extra income.
-            </Text>
-          </View>
+          ) : null
         }
-        renderSectionHeader={({ section }) => (
-          <MonthHeader theme={theme} section={section} fmt={fmt} />
-        )}
         renderItem={({ item }) => (
           <Row theme={theme} item={item} fmt={fmt} onEdit={openEdit} onDelete={remove} />
         )}
@@ -215,6 +269,90 @@ export default function Transactions() {
   );
 }
 
+function MonthNav({ theme, title, canPrev, canNext, onPrev, onNext, onReset, monthKey }: any) {
+  return (
+    <View style={styles.monthNav} testID={`month-nav-${monthKey}`}>
+      <Pressable
+        testID="month-prev"
+        onPress={onPrev}
+        disabled={!canPrev}
+        hitSlop={8}
+        style={[
+          styles.navArrow,
+          { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
+          !canPrev && { opacity: 0.35 },
+        ]}
+      >
+        <Feather name="chevron-left" size={20} color={theme.onSurface} />
+      </Pressable>
+      <View style={styles.navCenter}>
+        <Text
+          testID="month-nav-title"
+          style={[styles.navTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        <ResetMonthButton theme={theme} onReset={onReset} monthKey={monthKey} />
+      </View>
+      <Pressable
+        testID="month-next"
+        onPress={onNext}
+        disabled={!canNext}
+        hitSlop={8}
+        style={[
+          styles.navArrow,
+          { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
+          !canNext && { opacity: 0.35 },
+        ]}
+      >
+        <Feather name="chevron-right" size={20} color={theme.onSurface} />
+      </Pressable>
+    </View>
+  );
+}
+
+function ResetMonthButton({ theme, onReset, monthKey }: any) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setArmed(false);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [monthKey]);
+
+  const press = () => {
+    if (!armed) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setArmed(true);
+      timer.current = setTimeout(() => setArmed(false), 3500);
+      return;
+    }
+    if (timer.current) clearTimeout(timer.current);
+    setArmed(false);
+    onReset();
+  };
+
+  return (
+    <Pressable
+      testID={`reset-month-${monthKey}`}
+      onPress={press}
+      hitSlop={8}
+      style={[
+        styles.resetBtn,
+        armed
+          ? { backgroundColor: theme.danger }
+          : { backgroundColor: "rgba(192,69,59,0.12)" },
+      ]}
+    >
+      <Feather name={armed ? "alert-triangle" : "trash-2"} size={13} color={armed ? "#FFFFFF" : theme.danger} />
+      {armed ? <Text style={styles.resetBtnText}>Erase?</Text> : null}
+    </Pressable>
+  );
+}
+
 function MonthHeader({ theme, section, fmt }: any) {
   const positive = section.balance >= 0;
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -239,25 +377,20 @@ function MonthHeader({ theme, section, fmt }: any) {
   return (
     <View style={styles.monthHeader} testID={`month-section-${section.key}`}>
       <View style={styles.monthTitleRow}>
-        <Text style={[styles.monthTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-          {section.title}
+        <Text
+          testID={`month-balance-${section.key}`}
+          style={[styles.monthBalance, { color: positive ? theme.accentColor : theme.danger, fontFamily: FONTS.display }]}
+        >
+          {fmt(section.balance)}
         </Text>
-        <View style={styles.monthTitleRight}>
-          <Text
-            testID={`month-balance-${section.key}`}
-            style={[styles.monthBalance, { color: positive ? theme.accentColor : theme.danger, fontFamily: FONTS.display }]}
-          >
-            {fmt(section.balance)}
-          </Text>
-          <Pressable
-            testID={`share-month-${section.key}`}
-            onPress={shareMonth}
-            hitSlop={8}
-            style={[styles.shareBtn, { backgroundColor: theme.brandTertiary }]}
-          >
-            <Feather name="share-2" size={15} color={theme.accentColor} />
-          </Pressable>
-        </View>
+        <Pressable
+          testID={`share-month-${section.key}`}
+          onPress={shareMonth}
+          hitSlop={8}
+          style={[styles.shareBtn, { backgroundColor: theme.brandTertiary }]}
+        >
+          <Feather name="share-2" size={15} color={theme.accentColor} />
+        </Pressable>
       </View>
       <View style={[styles.monthSummary, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
         <MiniStat theme={theme} label="Salary" value={fmt(section.salary)} tint={theme.onSurface} />
@@ -381,16 +514,49 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
   },
   chipText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
-  monthHeader: { marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  navArrow: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 0.5,
+  },
+  navCenter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+  },
+  navTitle: { fontSize: 22, fontWeight: "500", textAlign: "center" },
+  resetBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 28,
+    minWidth: 28,
+    paddingHorizontal: 7,
+    borderRadius: RADIUS.pill,
+    justifyContent: "center",
+  },
+  resetBtnText: { fontFamily: FONTS.body, fontSize: 11, fontWeight: "700", color: "#FFFFFF" },
+  monthHeader: { marginBottom: SPACING.sm },
   monthTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
     marginBottom: SPACING.sm,
   },
-  monthTitle: { fontSize: 24, fontWeight: "500" },
-  monthTitleRight: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
-  monthBalance: { fontSize: 22, fontWeight: "500" },
+  monthBalance: { fontSize: 26, fontWeight: "500" },
   shareBtn: {
     width: 34,
     height: 34,
@@ -438,6 +604,12 @@ const styles = StyleSheet.create({
   },
   breakdownName: { flex: 1, fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
   breakdownAmt: { fontSize: 15, fontWeight: "500", marginLeft: SPACING.sm },
+  filterEmpty: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    textAlign: "center",
+    paddingVertical: SPACING.lg,
+  },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, gap: SPACING.md },
   rowIcon: {
     width: 44,

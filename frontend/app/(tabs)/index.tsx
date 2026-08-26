@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import { useApp } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { SalarySheet } from "@/src/components/SalarySheet";
+import { CategoryDonut, DonutSlice } from "@/src/components/CategoryDonut";
 import { useCountdown, formatDuration } from "@/src/hooks/useCountdown";
 
 const CARD_BG =
@@ -23,10 +24,41 @@ const CARD_BG_DARK =
   "https://images.pexels.com/photos/30232780/pexels-photo-30232780.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
 export default function Home() {
-  const { theme, user, stats, fmt } = useApp();
+  const { theme, user, stats, fmt, transactions } = useApp();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [salaryOpen, setSalaryOpen] = useState(false);
+
+  // Spending-by-category donut: this month's expenses, falling back to all time.
+  const donut = useMemo(() => {
+    const now = new Date();
+    const cm = now.getMonth();
+    const cy = now.getFullYear();
+    const monthMap = new Map<string, number>();
+    const allMap = new Map<string, number>();
+    for (const t of transactions) {
+      if (t.type !== "expense") continue;
+      const name = t.category || "Other";
+      allMap.set(name, (allMap.get(name) || 0) + t.amount);
+      const d = new Date(t.created_at);
+      if (d.getMonth() === cm && d.getFullYear() === cy) {
+        monthMap.set(name, (monthMap.get(name) || 0) + t.amount);
+      }
+    }
+    const useMonth = monthMap.size > 0;
+    const src = useMonth ? monthMap : allMap;
+    const sorted = Array.from(src.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    let data: DonutSlice[] = sorted;
+    if (sorted.length > 5) {
+      const top = sorted.slice(0, 5);
+      const rest = sorted.slice(5).reduce((s, x) => s + x.value, 0);
+      data = [...top, { name: "Others", value: rest }];
+    }
+    const total = data.reduce((s, x) => s + x.value, 0);
+    return { data, total, scope: useMonth ? "This Month" : "All Time" };
+  }, [transactions]);
 
   const lockRemaining = useCountdown(user?.delete_lock_until);
   const cardWidth = (width - SPACING.lg * 2 - SPACING.md) / 2;
@@ -124,6 +156,24 @@ export default function Home() {
             testID="extra-income-card"
           />
         </View>
+
+        {/* Spending by category */}
+        {donut.total > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+              Spending by Category
+            </Text>
+            <View style={{ marginBottom: SPACING.xl }}>
+              <CategoryDonut
+                data={donut.data}
+                total={donut.total}
+                scopeLabel={donut.scope}
+                theme={theme}
+                fmt={fmt}
+              />
+            </View>
+          </>
+        ) : null}
 
         {/* Monthly summary */}
         <Text style={[styles.sectionTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
