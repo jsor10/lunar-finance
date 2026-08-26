@@ -202,7 +202,7 @@ export default function Settings() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowLabel, { color: theme.onSurface }]}>Reset All Data</Text>
                 <Text style={[styles.rowValue, { color: theme.onSurfaceMuted }]}>
-                  Erase every expense & extra income entry
+                  Erase all entries & reset salary
                 </Text>
               </View>
             </View>
@@ -343,8 +343,8 @@ function ResetSheet({ visible, onClose, onConfirm }: any) {
   return (
     <SheetModal visible={visible} onClose={onClose} title="Reset All Data" testID="reset-sheet">
       <Text style={[styles.deleteHint, { color: theme.onSurfaceMuted }]}>
-        This erases every expense and extra income entry across all months. Your salary,
-        categories and settings are kept. This cannot be undone.
+        This erases every expense and extra income entry across all months and resets your
+        monthly salary to zero. Your categories and settings are kept. This cannot be undone.
       </Text>
       <Pressable
         testID="reset-confirm-button"

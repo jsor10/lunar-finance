@@ -221,6 +221,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const resetAllData = useCallback(async () => {
     await api("/transactions", { method: "DELETE" });
+    const u = await api<User>("/finance/salary", { method: "PUT", body: { salary: 0 } });
+    setUser(u);
     setTransactions([]);
   }, []);
 

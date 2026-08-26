@@ -4,7 +4,8 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  FlatList,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -30,9 +31,17 @@ type MonthData = {
   allItems: Transaction[];
 };
 
+type Group = {
+  name: string;
+  expense: number;
+  income: number;
+  items: Transaction[];
+};
+
 export default function Transactions() {
   const { theme, transactions, deleteTransaction, deleteMonth, fmt, stats } = useApp();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -106,6 +115,38 @@ export default function Transactions() {
   if (idx === -1) idx = months.length - 1; // default: latest month
   const current = idx >= 0 ? months[idx] : null;
 
+  // Category groups for the shown month, distributed into two balanced columns.
+  const columns = useMemo<[Group[], Group[]]>(() => {
+    if (!current) return [[], []];
+    const map = new Map<string, Group>();
+    for (const t of current.allItems) {
+      const name = t.category || "Other";
+      if (!map.has(name)) map.set(name, { name, expense: 0, income: 0, items: [] });
+      const g = map.get(name)!;
+      if (t.type === "income") g.income += t.amount;
+      else g.expense += t.amount;
+      g.items.push(t);
+    }
+    const groups = Array.from(map.values()).sort(
+      (a, b) => b.expense + b.income - (a.expense + a.income),
+    );
+    const colA: Group[] = [];
+    const colB: Group[] = [];
+    let hA = 0;
+    let hB = 0;
+    for (const g of groups) {
+      const h = g.items.length + 2; // approximate card height weight
+      if (hA <= hB) {
+        colA.push(g);
+        hA += h;
+      } else {
+        colB.push(g);
+        hB += h;
+      }
+    }
+    return [colA, colB];
+  }, [current]);
+
   const goPrev = () => {
     if (idx > 0) {
       Haptics.selectionAsync();
@@ -139,69 +180,85 @@ export default function Transactions() {
     deleteTransaction(t.id);
   };
 
+  const colWidth = (width - SPACING.lg * 2 - SPACING.md) / 2;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.surface }]}>
-      {/* Sticky header */}
-      <View style={{ paddingTop: insets.top + SPACING.md, backgroundColor: theme.surface }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + SPACING.md,
+          paddingHorizontal: SPACING.lg,
+          paddingBottom: 140,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.pageHeader}>
           <Text style={[styles.kicker, { color: theme.accentColor }]}>YOUR MONEY</Text>
           <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
             Activity
           </Text>
           <Text style={[styles.subtitle, { color: theme.onSurfaceMuted }]}>
-            Expenses & extra income, month by month
+            Grouped by category, month by month
           </Text>
         </View>
-      </View>
 
-      <FlatList
-        data={current ? current.allItems : []}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{
-          paddingHorizontal: SPACING.lg,
-          paddingTop: SPACING.md,
-          paddingBottom: 140,
-        }}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
+        {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null}
+
+        {current ? (
           <>
-            {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null}
-            {current ? (
-              <>
-                <MonthNav
-                  theme={theme}
-                  title={current.title}
-                  canPrev={idx > 0}
-                  canNext={idx < months.length - 1}
-                  onPrev={goPrev}
-                  onNext={goNext}
-                  onReset={resetMonth}
-                  monthKey={current.key}
-                />
-                <MonthHeader theme={theme} section={current} fmt={fmt} />
-              </>
-            ) : null}
-          </>
-        }
-        ListEmptyComponent={
-          !current ? (
-            <View style={styles.empty} testID="transactions-empty">
-              <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
-                <Feather name="inbox" size={26} color={theme.accentColor} />
+            <MonthNav
+              theme={theme}
+              title={current.title}
+              canPrev={idx > 0}
+              canNext={idx < months.length - 1}
+              onPrev={goPrev}
+              onNext={goNext}
+              onReset={resetMonth}
+              monthKey={current.key}
+            />
+            <MonthHeader theme={theme} section={current} fmt={fmt} />
+
+            <View style={styles.columns} testID={`category-columns-${current.key}`}>
+              <View style={{ width: colWidth, gap: SPACING.md }}>
+                {columns[0].map((g) => (
+                  <GroupCard
+                    key={g.name}
+                    group={g}
+                    theme={theme}
+                    fmt={fmt}
+                    onEdit={openEdit}
+                    onDelete={remove}
+                  />
+                ))}
               </View>
-              <Text style={[styles.emptyTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-                No entries yet
-              </Text>
-              <Text style={[styles.emptyText, { color: theme.onSurfaceMuted }]}>
-                Tap the + button to add your first expense or extra income.
-              </Text>
+              <View style={{ width: colWidth, gap: SPACING.md }}>
+                {columns[1].map((g) => (
+                  <GroupCard
+                    key={g.name}
+                    group={g}
+                    theme={theme}
+                    fmt={fmt}
+                    onEdit={openEdit}
+                    onDelete={remove}
+                  />
+                ))}
+              </View>
             </View>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <Row theme={theme} item={item} fmt={fmt} onEdit={openEdit} onDelete={remove} />
+          </>
+        ) : (
+          <View style={styles.empty} testID="transactions-empty">
+            <View style={[styles.emptyIcon, { backgroundColor: theme.brandTertiary }]}>
+              <Feather name="inbox" size={26} color={theme.accentColor} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+              No entries yet
+            </Text>
+            <Text style={[styles.emptyText, { color: theme.onSurfaceMuted }]}>
+              Tap the + button to add your first expense or extra income.
+            </Text>
+          </View>
         )}
-      />
+      </ScrollView>
 
       <Pressable
         testID="add-transaction-fab"
@@ -220,6 +277,76 @@ export default function Transactions() {
         onClose={() => setSheetOpen(false)}
         editing={editing}
       />
+    </View>
+  );
+}
+
+function GroupCard({ group, theme, fmt, onEdit, onDelete }: any) {
+  return (
+    <View
+      testID={`group-card-${group.name}`}
+      style={[styles.groupCard, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+    >
+      <View style={styles.groupHeader}>
+        <View style={[styles.groupIcon, { backgroundColor: theme.brandTertiary }]}>
+          <Feather name={categoryIcon(group.name) as any} size={13} color={theme.accentColor} />
+        </View>
+        <Text style={[styles.groupName, { color: theme.onSurface }]} numberOfLines={1}>
+          {group.name}
+        </Text>
+      </View>
+      <View style={styles.groupTotals}>
+        {group.expense > 0 ? (
+          <Text style={[styles.groupTotal, { color: theme.danger, fontFamily: FONTS.display }]}>
+            -{fmt(group.expense)}
+          </Text>
+        ) : null}
+        {group.income > 0 ? (
+          <Text style={[styles.groupTotal, { color: theme.success, fontFamily: FONTS.display }]}>
+            +{fmt(group.income)}
+          </Text>
+        ) : null}
+      </View>
+      <View style={[styles.groupDivider, { backgroundColor: theme.border }]} />
+      {group.items.map((item: Transaction, i: number) => (
+        <Pressable
+          key={item.id}
+          testID={`transaction-row-${item.id}`}
+          onPress={() => onEdit(item)}
+          style={({ pressed }) => [
+            styles.entry,
+            i > 0 && { borderTopWidth: 0.5, borderTopColor: theme.border },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.entryDesc, { color: theme.onSurface }]} numberOfLines={1}>
+              {item.description}
+            </Text>
+            <Text
+              style={[
+                styles.entryAmount,
+                {
+                  color: item.type === "expense" ? theme.danger : theme.success,
+                  fontFamily: FONTS.display,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {item.type === "expense" ? "-" : "+"}
+              {fmt(item.amount)}
+            </Text>
+          </View>
+          <Pressable
+            testID={`delete-transaction-${item.id}`}
+            onPress={() => onDelete(item)}
+            hitSlop={10}
+            style={styles.entryDelete}
+          >
+            <Feather name="trash-2" size={14} color={theme.onSurfaceMuted} />
+          </Pressable>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -310,7 +437,6 @@ function ResetMonthButton({ theme, onReset, monthKey }: any) {
 
 function MonthHeader({ theme, section, fmt }: any) {
   const positive = section.balance >= 0;
-  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const shareMonth = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -354,52 +480,6 @@ function MonthHeader({ theme, section, fmt }: any) {
         <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
         <MiniStat theme={theme} label="Expenses" value={fmt(section.expenses)} tint={theme.danger} />
       </View>
-      {section.breakdown.length > 0 ? (
-        <>
-          <Pressable
-            testID={`breakdown-toggle-${section.key}`}
-            onPress={() => setShowBreakdown((v) => !v)}
-            style={styles.breakdownToggle}
-            hitSlop={6}
-          >
-            <Text style={[styles.breakdownToggleText, { color: theme.onSurfaceMuted }]}>
-              Category breakdown
-            </Text>
-            <Feather
-              name={showBreakdown ? "chevron-up" : "chevron-down"}
-              size={15}
-              color={theme.onSurfaceMuted}
-            />
-          </Pressable>
-          {showBreakdown ? (
-            <View
-              testID={`breakdown-card-${section.key}`}
-              style={[styles.breakdownCard, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
-            >
-              {section.breakdown.map((c: any) => (
-                <View key={c.name} style={styles.breakdownRow}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: theme.brandTertiary }]}>
-                    <Feather name={categoryIcon(c.name) as any} size={13} color={theme.accentColor} />
-                  </View>
-                  <Text style={[styles.breakdownName, { color: theme.onSurfaceSecondary }]} numberOfLines={1}>
-                    {c.name}
-                  </Text>
-                  {c.income > 0 ? (
-                    <Text style={[styles.breakdownAmt, { color: theme.success, fontFamily: FONTS.display }]}>
-                      +{fmt(c.income)}
-                    </Text>
-                  ) : null}
-                  {c.expense > 0 ? (
-                    <Text style={[styles.breakdownAmt, { color: theme.danger, fontFamily: FONTS.display }]}>
-                      -{fmt(c.expense)}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </>
-      ) : null}
     </View>
   );
 }
@@ -415,45 +495,9 @@ function MiniStat({ theme, label, value, tint }: any) {
   );
 }
 
-function Row({ theme, item, fmt, onEdit, onDelete }: any) {
-  const isExpense = item.type === "expense";
-  const tint = isExpense ? theme.danger : theme.success;
-  return (
-    <Pressable
-      testID={`transaction-row-${item.id}`}
-      onPress={() => onEdit(item)}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
-    >
-      <View style={[styles.rowIcon, { backgroundColor: theme.brandTertiary }]}>
-        <Feather name={categoryIcon(item.category) as any} size={18} color={tint} />
-      </View>
-      <View style={styles.rowMid}>
-        <Text style={[styles.rowTitle, { color: theme.onSurface }]} numberOfLines={1}>
-          {item.description}
-        </Text>
-        <Text style={[styles.rowType, { color: theme.onSurfaceMuted }]}>
-          {item.category || "Other"} · {isExpense ? "Expense" : "Extra Income"}
-        </Text>
-      </View>
-      <Text style={[styles.rowAmount, { color: tint, fontFamily: FONTS.display }]}>
-        {isExpense ? "-" : "+"}
-        {fmt(item.amount).replace("-", "")}
-      </Text>
-      <Pressable
-        testID={`delete-transaction-${item.id}`}
-        onPress={() => onDelete(item)}
-        hitSlop={10}
-        style={styles.deleteBtn}
-      >
-        <Feather name="trash-2" size={17} color={theme.onSurfaceMuted} />
-      </Pressable>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  pageHeader: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xs },
+  pageHeader: { marginBottom: SPACING.md },
   kicker: {
     fontFamily: FONTS.body,
     fontSize: 11,
@@ -498,7 +542,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   resetBtnText: { fontFamily: FONTS.body, fontSize: 11, fontWeight: "700", color: "#FFFFFF" },
-  monthHeader: { marginBottom: SPACING.sm },
+  monthHeader: { marginBottom: SPACING.lg },
   monthTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -523,49 +567,40 @@ const styles = StyleSheet.create({
   miniLabel: { fontFamily: FONTS.body, fontSize: 11, marginBottom: 4 },
   miniValue: { fontSize: 16, fontWeight: "500" },
   miniDivider: { width: 0.5 },
-  breakdownToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  breakdownToggleText: { fontFamily: FONTS.body, fontSize: 12, fontWeight: "600" },
-  breakdownCard: {
+  columns: { flexDirection: "row", gap: SPACING.md, alignItems: "flex-start" },
+  groupCard: {
     borderRadius: RADIUS.md,
     borderWidth: 0.5,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    padding: SPACING.md,
   },
-  breakdownRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    paddingVertical: 7,
-  },
-  breakdownIcon: {
-    width: 26,
-    height: 26,
+  groupHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.xs, marginBottom: 6 },
+  groupIcon: {
+    width: 24,
+    height: 24,
     borderRadius: RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
   },
-  breakdownName: { flex: 1, fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
-  breakdownAmt: { fontSize: 15, fontWeight: "500", marginLeft: SPACING.sm },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, gap: SPACING.md },
-  rowIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    alignItems: "center",
-    justifyContent: "center",
+  groupName: {
+    flex: 1,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
-  rowMid: { flex: 1 },
-  rowTitle: { fontFamily: FONTS.body, fontSize: 16, fontWeight: "600" },
-  rowType: { fontFamily: FONTS.body, fontSize: 12, marginTop: 2 },
-  rowAmount: { fontSize: 20, fontWeight: "500" },
-  deleteBtn: { padding: SPACING.xs },
+  groupTotals: { gap: 0, marginBottom: SPACING.sm },
+  groupTotal: { fontSize: 18, fontWeight: "500" },
+  groupDivider: { height: 0.5, marginBottom: 2 },
+  entry: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: SPACING.sm,
+    gap: 6,
+  },
+  entryDesc: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
+  entryAmount: { fontSize: 15, fontWeight: "500", marginTop: 2 },
+  entryDelete: { padding: 4 },
   fab: {
     position: "absolute",
     right: SPACING.lg,
