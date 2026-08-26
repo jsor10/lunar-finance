@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -39,8 +40,9 @@ type Group = {
 };
 
 export default function Transactions() {
-  const { theme, transactions, deleteTransaction, deleteMonth, fmt, stats } = useApp();
+  const { theme, transactions, deleteTransaction, deleteMonth, fmt, salaryFor } = useApp();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -85,21 +87,24 @@ export default function Transactions() {
     }
     return Array.from(map.values())
       .sort((a, b) => (a.key < b.key ? -1 : 1))
-      .map((m) => ({
-        key: m.key,
-        title: m.title,
-        year: m.year,
-        month1: m.month1,
-        salary: stats.salary,
-        income: m.income,
-        expenses: m.expenses,
-        balance: stats.salary + m.income - m.expenses,
-        breakdown: Array.from(m.cats.values()).sort(
-          (a, b) => b.expense + b.income - (a.expense + a.income),
-        ),
-        allItems: m.all,
-      }));
-  }, [transactions, stats.salary]);
+      .map((m) => {
+        const sal = salaryFor(m.year, m.month1 - 1);
+        return {
+          key: m.key,
+          title: m.title,
+          year: m.year,
+          month1: m.month1,
+          salary: sal,
+          income: m.income,
+          expenses: m.expenses,
+          balance: sal + m.income - m.expenses,
+          breakdown: Array.from(m.cats.values()).sort(
+            (a, b) => b.expense + b.income - (a.expense + a.income),
+          ),
+          allItems: m.all,
+        };
+      });
+  }, [transactions, salaryFor]);
 
   const trend = useMemo(
     () =>
@@ -193,13 +198,27 @@ export default function Transactions() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.pageHeader}>
-          <Text style={[styles.kicker, { color: theme.accentColor }]}>YOUR MONEY</Text>
-          <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-            Activity
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.onSurfaceMuted }]}>
-            Grouped by category, month by month
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.kicker, { color: theme.accentColor }]}>YOUR MONEY</Text>
+            <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+              Activity
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.onSurfaceMuted }]}>
+              Grouped by category, month by month
+            </Text>
+          </View>
+          <Pressable
+            testID="year-overview-button"
+            onPress={() => router.push("/year")}
+            style={({ pressed }) => [
+              styles.yearBtn,
+              { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <Feather name="calendar" size={14} color={theme.accentColor} />
+            <Text style={[styles.yearBtnText, { color: theme.onSurface }]}>Year</Text>
+          </Pressable>
         </View>
 
         {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null}
@@ -497,7 +516,18 @@ function MiniStat({ theme, label, value, tint }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  pageHeader: { marginBottom: SPACING.md },
+  pageHeader: { marginBottom: SPACING.md, flexDirection: "row", alignItems: "flex-start" },
+  yearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 38,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.pill,
+    borderWidth: 0.5,
+    marginTop: SPACING.sm,
+  },
+  yearBtnText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
   kicker: {
     fontFamily: FONTS.body,
     fontSize: 11,

@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 6 (4 new features) fully verified. BACKEND: 30/30 regression pass + 24/24 new tests in /app/backend/tests/test_iter6.py (templates CRUD w/ validation + 20-limit + auth, goal set/delete w/ created_at preservation, salary history upsert current-month + same-month replace-not-duplicate, /auth/me returns goal+salary_history). Final class TestZRestoreCanonicalState re-seeds demo state (salary 3500, 'Trip to Japan' 5000 goal, single 'Coffee' template). FRONTEND (390x844 mobile, token-bypass on web): (a) HOME savings goal — goal-card renders 'Trip to Japan €10,510.00 of €5,000.00 saved 100%' (correctly clamped since leftovers exceed target); tapping opens goal-sheet, editing target to 20000 correctly shows 53% (10510/20000), goal-delete-button removes goal and set-goal-button (dashed) appears, creating new goal via set-goal-button works, restoring 'Trip to Japan' 5000 works. (b) TEMPLATES — Activity > FAB > sheet shows QUICK ADD row with template-chip-{id} (Coffee €2.5); tap instantly creates transaction + closes sheet + Coffee row appears in Food group card; saving a new entry with save-as-template-toggle checked adds a new template chip (Bagel) visible next time sheet opens; long-press on Bagel chip deletes only the template (transaction remains). (c) YEAR OVERVIEW — Activity > year-overview-button navigates to /year, year-title '2026', totals strip shows +€200 / -€197.50 / €10,502.50 (year-total-saved), cells 5/6/7 = JUN €3,405 / JUL €3,670 / AUG €3,427.50, all other cells show '—', both year-prev and year-next disabled (opacity 0.3) since only 2026 has data, share-year-button triggers window.print exactly once with no JS errors, year-back-button returns to Activity. (d) HISTORICAL SALARY — changing salary to 4000 via Home salary-button correctly updates AUG (3500→3935), JUL (4170), JUN (3905) — since salary_history only has one entry (2026-08:new), older months fall back to hist[0].salary=4000 as designed. Restoring to 3500 works. REGRESSION (all still green): month-prev/next navigation w/ correct opacity bounds, per-month reset two-tap ('Erase?' label armed), category-columns-{key} with group-card-{name}, share-month-{key} triggers window.print without errors, Home donut renders + hides correctly. Console warnings noted (non-blocking): (1) 'props.pointerEvents is deprecated' from CategoryDonut center overlay (flagged in iter-3), (2) 'Invalid DOM property transform-origin' from react-native-svg <G origin=...> in CategoryDonut — this is a react-native-svg-web internal issue, not app code.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/templates", "issue": "Response includes user_id in each item (see /app/backend/server.py:287 — projection {\"_id\":0} doesn't strip user_id). Inconsistent with POST /api/templates which explicitly pops user_id. Not a security issue (user only sees own id) but breaks response-shape symmetry."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "CategoryDonut.tsx (center overlay)", "issue": "Still uses deprecated JSX prop pointerEvents=\"none\" instead of style.pointerEvents. Reference: /app/frontend/src/components/CategoryDonut.tsx:71. Was flagged in iteration_3; console warning remains: 'props.pointerEvents is deprecated. Use style.pointerEvents'."},
+      {"component": "CategoryDonut.tsx (react-native-svg <G origin>)", "issue": "react-native-svg's <G rotation={-90} origin={`${SIZE/2}, ${SIZE/2}`}> at /app/frontend/src/components/CategoryDonut.tsx:42 renders as an SVG element with DOM attribute 'transform-origin' triggering React error: 'Invalid DOM property `transform-origin`. Did you mean `transformOrigin`?'. This is a react-native-svg-web rendering bug (not our code) — consider either upgrading react-native-svg or replacing the <G rotation origin> with an explicit transform string to silence the noisy console error."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter6.py",
+    "/app/backend/tests/seed_multi_month.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "(minor) Strip user_id from GET /api/templates response by adding 'user_id: 0' to the mongo projection at /app/backend/server.py:287, e.g., .find({...}, {\"_id\": 0, \"user_id\": 0}). Aligns with POST /api/templates shape.",
+    "(non-blocking, iter-3 carryover) In CategoryDonut.tsx line 71, migrate JSX prop pointerEvents=\"none\" to style={{...styles.center, pointerEvents: 'none'}} to remove RN-Web deprecation warning.",
+    "(non-blocking, cosmetic console noise) CategoryDonut.tsx line 42: <G rotation origin> emits an 'Invalid DOM property transform-origin' warning from react-native-svg on web. Consider replacing with explicit transform string (e.g., transform={`rotate(-90 ${SIZE/2} ${SIZE/2})`}) or upgrading react-native-svg."
+  ],
+  "critical_code_review_comments": [
+    "server.py /templates endpoints: POST validates type ∈ {expense, income}, amount>0, non-empty description; enforces 20 max via count_documents pre-check; pops _id + user_id from response. Correct.",
+    "server.py /users/goal PUT: preserves existing goal.created_at on update (correctly reads from user.get('goal') || {} before overwriting). Empty name and target<=0 both 400.",
+    "server.py /finance/salary PUT: builds current-month key via now_utc().strftime('%Y-%m'), filters out any existing entry for that key, then appends fresh entry — guarantees same-month idempotency (verified by test_same_month_updates_replace_not_duplicate).",
+    "AppContext.salaryFor(year, month0): builds YYYY-MM key from year+month0+1 padded, walks salary_history (sorted ascending) picking latest h.month <= key; falls back to hist[0].salary or user.salary. Consistent with backend upsert ordering.",
+    "index.tsx totalSaved memo: correctly buckets by year-month0, sums salaryFor(y,m) + income − expenses per active month; clamps to Math.max(0, totalSaved) for progress display and Math.min(..,100) for percent. Progress bar width uses same formula — consistent.",
+    "year.tsx: months without activity (has=false) contribute 0 to totalSaved (r.has ? r.saved : 0), preventing empty months from padding the total with salary alone. Correct semantics for 'saved per month with activity'.",
+    "TransactionSheet.tsx quickAdd(tpl): closes sheet on success, uses same addTransaction pipe as manual entry. save() branch: only creates template when saveTpl checked AND not editing — correct guard.",
+    "yearPdf.ts uses Print.printAsync on web (window.print) with buildHtml — safe (no runtime error observed, single call verified).",
+    "MINOR: server.py:287 GET /api/templates projection excludes only _id, leaks user_id back to the client (see backend_issues.minor)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6.py"
+  ],
+  "success_rate": {
+    "backend": "100% (54/54: 30 regression + 24 new iter6)",
+    "frontend": "100% of iter6 flows verified (goal edit/delete/create, template quick-add/save-as/long-press-delete, year overview grid + totals + share + prev-next disabled + back, historical salary fallback across 3 months, all iter1-5 regressions)"
+  },
+  "seed_data_creation": "Restored canonical demo state at end of test run: user_testseed001 salary=3500, goal='Trip to Japan' target=5000, 6 canonical transactions across Jun/Jul/Aug 2026, 1 custom Gym category, 1 'Coffee' template (€2.50 Food). Achieved via TestZRestoreCanonicalState in /app/backend/tests/test_iter6.py + manual cleanup of test-generated Bagel/Coffee transactions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth injection unchanged: localStorage.setItem('sm_session_token', JSON.stringify('test_session_token_fixed_123456')) then reload, wait for [data-testid=\"home-header\"]. Prefer wait_until='load' (not 'domcontentloaded') to avoid race with app bootstrap. Iter6 additions: (1) 24 backend tests in /app/backend/tests/test_iter6.py — run with `pytest tests/test_iter6.py -v` from /app/backend. The final TestZRestoreCanonicalState class MUST run last (alphabetical) — it re-seeds salary=3500, 'Trip to Japan' goal 5000, and a single 'Coffee' template so frontend testing can start cleanly. (2) Templates are stored in a new mongo collection db.templates (id, user_id, type, amount, description, category, created_at) — max 20 per user. (3) Goal lives on the user doc (user.goal.{name,target,created_at}); DELETE nulls it. (4) salary_history is on user doc, sorted asc by month YYYY-MM; PUT /finance/salary upserts current-month entry. (5) On web share PDFs (both month and year) call window.print via expo-print Print.printAsync — override window.print for tests. (6) Month testIDs remain 0-indexed (AUG=2026-07, JUL=2026-06, JUN=2026-05); year cell testIDs are 0-indexed too (JUN=year-cell-5, JUL=year-cell-6, AUG=year-cell-7). (7) NOTE: Activity tab persists selectedKey when navigating away and back — reset to latest by triggering a deleteMonth/deleteAll or by fresh page reload. (8) Tab switching in expo-router (tabs) layout does NOT unmount child screens (state persists) — use full page.reload() between test blocks that need a clean tab state.",
+  "rca_of_issue": "N/A — no bugs found in iteration-6 scope. Two console warnings (pointerEvents deprecation + transform-origin) are non-blocking cosmetic issues in the CategoryDonut / react-native-svg render output."
+}

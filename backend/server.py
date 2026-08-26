@@ -71,6 +71,18 @@ class CategoryInput(BaseModel):
     type: str  # 'expense' | 'income'
 
 
+class GoalInput(BaseModel):
+    name: str
+    target: float
+
+
+class TemplateInput(BaseModel):
+    type: str  # 'expense' | 'income'
+    amount: float
+    description: str
+    category: Optional[str] = "Other"
+
+
 class DeleteLockUpdate(BaseModel):
     lock_until: Optional[str] = None  # ISO string or null to clear
 
@@ -87,6 +99,8 @@ def user_public(u: dict) -> dict:
         "currency": u.get("currency", "EUR"),
         "delete_lock_until": u.get("delete_lock_until"),
         "custom_categories": u.get("custom_categories", []),
+        "goal": u.get("goal"),
+        "salary_history": u.get("salary_history", []),
     }
 
 
@@ -229,9 +243,80 @@ async def delete_category(cat_id: str, user: dict = Depends(get_current_user)):
 # ---------- Finance ----------
 @api_router.put("/finance/salary")
 async def update_salary(payload: SalaryUpdate, user: dict = Depends(get_current_user)):
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"salary": payload.salary}})
+    month_key = now_utc().strftime("%Y-%m")
+    hist = [h for h in user.get("salary_history", []) if h["month"] != month_key]
+    hist.append({"month": month_key, "salary": payload.salary})
+    hist.sort(key=lambda h: h["month"])
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"salary": payload.salary, "salary_history": hist}},
+    )
     u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return user_public(u)
+
+
+# ---------- Savings goal ----------
+@api_router.put("/users/goal")
+async def set_goal(payload: GoalInput, user: dict = Depends(get_current_user)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    if payload.target <= 0:
+        raise HTTPException(status_code=400, detail="Target must be positive")
+    existing = user.get("goal") or {}
+    goal = {
+        "name": name,
+        "target": payload.target,
+        "created_at": existing.get("created_at", now_utc().isoformat()),
+    }
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"goal": goal}})
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(u)
+
+
+@api_router.delete("/users/goal")
+async def delete_goal(user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"goal": None}})
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(u)
+
+
+# ---------- Templates (quick-add) ----------
+@api_router.get("/templates")
+async def list_templates(user: dict = Depends(get_current_user)):
+    return await db.templates.find({"user_id": user["user_id"]}, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(100)
+
+
+@api_router.post("/templates")
+async def create_template(payload: TemplateInput, user: dict = Depends(get_current_user)):
+    if payload.type not in ("expense", "income"):
+        raise HTTPException(status_code=400, detail="Invalid type")
+    if payload.amount <= 0 or not payload.description.strip():
+        raise HTTPException(status_code=400, detail="Amount and description required")
+    count = await db.templates.count_documents({"user_id": user["user_id"]})
+    if count >= 20:
+        raise HTTPException(status_code=400, detail="Template limit reached (20)")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "type": payload.type,
+        "amount": abs(payload.amount),
+        "description": payload.description.strip(),
+        "category": (payload.category or "Other").strip() or "Other",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.templates.insert_one(doc)
+    doc.pop("_id", None)
+    doc.pop("user_id", None)
+    return doc
+
+
+@api_router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user: dict = Depends(get_current_user)):
+    result = await db.templates.delete_one({"id": template_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"ok": True}
 
 
 @api_router.get("/transactions")

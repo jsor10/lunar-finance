@@ -39,11 +39,18 @@ Premium, minimalist mobile app to manage monthly finances. Home dashboard (month
 - "Reset All Data" in Settings now also resets monthly salary to 0 (DELETE /api/transactions + PUT /api/finance/salary {salary:0}).
 - Activity month view now groups entries by category in two balanced masonry columns: each GroupCard shows category icon + name, expense/income totals, and its entries as a list (tap to edit, trash to delete). Replaced the flat list and the collapsible breakdown (group cards now serve that purpose; PDF export still includes the breakdown table).
 
+## Implemented (2026-08-26, iteration 6)
+- Quick-add templates: GET/POST/DELETE /api/templates (max 20). "QUICK ADD" chips in TransactionSheet (tap = instant entry, long-press = delete template) + "Save as quick-add template" checkbox on new entries.
+- Savings goal: PUT/DELETE /api/users/goal. Home goal card with progress bar (% of target, clamped 0-100); progress = sum of monthly leftovers (salaryFor + income − expenses). GoalSheet for set/edit/remove; dashed "Set a savings goal" button when none.
+- Historical salary: PUT /api/finance/salary upserts salary_history [{month:"YYYY-MM", salary}]; salaryFor(year,month0) in AppContext picks the entry in effect for each month (fallback: earliest entry, else user.salary). Activity months + Year view use it.
+- Year overview: /year route (button on Activity header) — year arrows, income/expenses/saved totals strip, 12-month grid of saved-per-month, styled year PDF share (expo-print).
+- Verified: 54/54 backend pytest + all frontend flows via testing agent (iteration_4.json report, no bugs). Fixed minor: GET /templates no longer returns user_id.
+
 ## Backlog
 - P1: Bottom-sheet ScrollView for very small screens (test-noted robustness).
 - P2: Recurring transactions.
 - P2: Tap a trend-chart bar to jump to that month in the single-month Activity view.
-- P2: Track historical salary changes per month (historical months currently use current global salary).
+- P2: Budget limits per category.
 
 ## Next Tasks
 - Await user feedback on single-month Activity, resets, and donut.

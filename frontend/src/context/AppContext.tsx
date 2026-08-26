@@ -31,6 +31,22 @@ export type CustomCategory = {
   type: "expense" | "income";
 };
 
+export type Goal = {
+  name: string;
+  target: number;
+  created_at: string;
+};
+
+export type SalaryEntry = { month: string; salary: number }; // month: "YYYY-MM"
+
+export type Template = {
+  id: string;
+  type: "expense" | "income";
+  amount: number;
+  description: string;
+  category?: string;
+};
+
 export type User = {
   user_id: string;
   email: string;
@@ -42,6 +58,8 @@ export type User = {
   currency: CurrencyCode;
   delete_lock_until: string | null;
   custom_categories: CustomCategory[];
+  goal: Goal | null;
+  salary_history: SalaryEntry[];
 };
 
 export type Transaction = {
@@ -76,8 +94,10 @@ type Ctx = {
   theme: Theme;
   currencySymbol: string;
   transactions: Transaction[];
+  templates: Template[];
   stats: Stats;
   fmt: (n: number) => string;
+  salaryFor: (year: number, month0: number) => number;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   processSessionId: (sid: string) => Promise<void>;
@@ -89,6 +109,10 @@ type Ctx = {
   resetAllData: () => Promise<void>;
   addCategory: (name: string, type: "expense" | "income") => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  addTemplate: (t: TransactionPayload) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
+  setGoal: (name: string, target: number) => Promise<void>;
+  deleteGoal: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
   setMode: (m: Mode) => Promise<void>;
   setAccent: (a: Accent) => Promise<void>;
@@ -110,6 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authenticating, setAuthenticating] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
 
   const theme = useMemo(
     () => buildTheme(user?.theme ?? "light", user?.accent ?? "navy"),
@@ -117,8 +142,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loadTransactions = useCallback(async () => {
-    const tx = await api<Transaction[]>("/transactions");
+    const [tx, tpl] = await Promise.all([
+      api<Transaction[]>("/transactions"),
+      api<Template[]>("/templates"),
+    ]);
     setTransactions(tx);
+    setTemplates(tpl);
   }, []);
 
   const bootstrap = useCallback(async () => {
@@ -191,6 +220,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await clearToken();
     setUser(null);
     setTransactions([]);
+    setTemplates([]);
   }, []);
 
   const setSalary = useCallback(async (v: number) => {
@@ -236,6 +266,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
+  const addTemplate = useCallback(async (t: TransactionPayload) => {
+    const tpl = await api<Template>("/templates", { method: "POST", body: t });
+    setTemplates((prev) => [...prev, tpl]);
+  }, []);
+
+  const deleteTemplate = useCallback(async (id: string) => {
+    await api(`/templates/${id}`, { method: "DELETE" });
+    setTemplates((prev) => prev.filter((x) => x.id !== id));
+  }, []);
+
+  const setGoal = useCallback(async (name: string, target: number) => {
+    const u = await api<User>("/users/goal", { method: "PUT", body: { name, target } });
+    setUser(u);
+  }, []);
+
+  const deleteGoal = useCallback(async () => {
+    const u = await api<User>("/users/goal", { method: "DELETE" });
+    setUser(u);
+  }, []);
+
+  const salaryFor = useCallback(
+    (year: number, month0: number) => {
+      const hist = user?.salary_history || [];
+      if (!hist.length) return user?.salary || 0;
+      const key = `${year}-${String(month0 + 1).padStart(2, "0")}`;
+      let best: SalaryEntry | null = null;
+      for (const h of hist) {
+        if (h.month <= key) best = h; // history is sorted ascending
+      }
+      return best ? best.salary : hist[0].salary;
+    },
+    [user?.salary_history, user?.salary],
+  );
+
   const updateName = useCallback(async (name: string) => {
     const u = await api<User>("/user/profile", { method: "PUT", body: { name } });
     setUser(u);
@@ -261,6 +325,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await clearToken();
     setUser(null);
     setTransactions([]);
+    setTemplates([]);
   }, []);
 
   useEffect(() => {
@@ -343,8 +408,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     theme,
     currencySymbol,
     transactions,
+    templates,
     stats,
     fmt,
+    salaryFor,
     login,
     logout,
     processSessionId,
@@ -356,6 +423,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     resetAllData,
     addCategory,
     deleteCategory,
+    addTemplate,
+    deleteTemplate,
+    setGoal,
+    deleteGoal,
     updateName,
     setMode,
     setAccent,

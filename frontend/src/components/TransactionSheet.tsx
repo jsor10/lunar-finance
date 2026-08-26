@@ -29,10 +29,13 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
   const {
     theme,
     user,
+    templates,
     addTransaction,
     updateTransaction,
     addCategory,
     deleteCategory,
+    addTemplate,
+    deleteTemplate,
     currencySymbol,
   } = useApp();
   const [type, setType] = useState<"expense" | "income">(defaultType);
@@ -41,6 +44,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
   const [category, setCategory] = useState("Other");
   const [addingCat, setAddingCat] = useState(false);
   const [newCat, setNewCat] = useState("");
+  const [saveTpl, setSaveTpl] = useState(false);
   const [saving, setSaving] = useState(false);
   const amountRef = useRef<TextInput>(null);
 
@@ -59,6 +63,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
       }
       setAddingCat(false);
       setNewCat("");
+      setSaveTpl(false);
       const t = setTimeout(() => amountRef.current?.focus(), 250);
       return () => clearTimeout(t);
     }
@@ -102,6 +107,28 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     if (category === c.name) setCategory("Other");
   };
 
+  const quickAdd = async (tpl: (typeof templates)[number]) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await addTransaction({
+        type: tpl.type,
+        amount: tpl.amount,
+        description: tpl.description,
+        category: tpl.category || "Other",
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeTemplate = async (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await deleteTemplate(id);
+  };
+
   const save = async () => {
     const num = parseFloat(amount.replace(",", "."));
     if (isNaN(num) || num <= 0 || !description.trim()) return;
@@ -109,7 +136,14 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     try {
       const payload = { type, amount: num, description: description.trim(), category };
       if (editing) await updateTransaction(editing.id, payload);
-      else await addTransaction(payload);
+      else {
+        await addTransaction(payload);
+        if (saveTpl) {
+          try {
+            await addTemplate(payload);
+          } catch {}
+        }
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       onClose();
     } finally {
@@ -124,6 +158,45 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
       title={editing ? "Edit Entry" : "New Entry"}
       testID="transaction-sheet"
     >
+      {!editing && templates.length > 0 ? (
+        <>
+          <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>QUICK ADD</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.catScroll}
+            contentContainerStyle={styles.catRow}
+          >
+            {templates.map((tpl) => (
+              <Pressable
+                key={tpl.id}
+                testID={`template-chip-${tpl.id}`}
+                onPress={() => quickAdd(tpl)}
+                onLongPress={() => removeTemplate(tpl.id)}
+                style={[
+                  styles.tplChip,
+                  { backgroundColor: theme.brandTertiary, borderColor: theme.border },
+                ]}
+              >
+                <Feather
+                  name={tpl.type === "expense" ? "arrow-down-left" : "arrow-up-right"}
+                  size={12}
+                  color={tpl.type === "expense" ? theme.danger : theme.success}
+                />
+                <Text style={[styles.tplChipText, { color: theme.onSurface }]} numberOfLines={1}>
+                  {tpl.description}
+                </Text>
+                <Text style={[styles.tplChipAmt, { color: theme.accentColor, fontFamily: FONTS.display }]}>
+                  {currencySymbol}
+                  {tpl.amount}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
+
       <View style={[styles.segment, { backgroundColor: theme.surfaceTertiary }]}>
         {(["expense", "income"] as const).map((t) => {
           const active = type === t;
@@ -277,6 +350,24 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
         </View>
       ) : null}
 
+      {!editing ? (
+        <Pressable
+          testID="save-as-template-toggle"
+          onPress={() => setSaveTpl((v) => !v)}
+          style={styles.tplToggle}
+          hitSlop={6}
+        >
+          <Feather
+            name={saveTpl ? "check-square" : "square"}
+            size={18}
+            color={saveTpl ? theme.accentColor : theme.onSurfaceMuted}
+          />
+          <Text style={[styles.tplToggleText, { color: theme.onSurfaceSecondary }]}>
+            Save as quick-add template
+          </Text>
+        </Pressable>
+      ) : null}
+
       <Pressable
         testID="transaction-save-button"
         onPress={save}
@@ -347,6 +438,25 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
   },
   catChipText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
+  tplChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 38,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.pill,
+    borderWidth: 0.5,
+    maxWidth: 220,
+  },
+  tplChipText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600", flexShrink: 1 },
+  tplChipAmt: { fontSize: 14, fontWeight: "500" },
+  tplToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  tplToggleText: { fontFamily: FONTS.body, fontSize: 14, fontWeight: "500" },
   newCatRow: {
     flexDirection: "row",
     alignItems: "center",
