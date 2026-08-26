@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 focus: categories + PDF export. Backend: 23/23 pytest pass — new tests cover POST/DELETE /api/categories (persist, duplicate case-insensitive 400, invalid type 400, empty name 400, auth required) and transactions with category (create with category, default to Other, PUT updates category, custom-category value accepted). Frontend (mobile 390x844, token-bypass): category chip row renders all expense presets + custom 'Gym'; type toggle to income switches to income chips (Freelance/Bonus/Gift/Investment/Other) and hides expense chips; category-add-chip -> new-category-input -> new-category-save creates chip, auto-selects it, and lets a transaction be saved with the new custom category; new row shows 'Category · Expense/Extra Income' subtitle; per-month breakdown-toggle-{key} expands breakdown-card-{key} listing per-category totals with correct colors; share-month-{key} triggers Print (no JS errors, app remains responsive); edit flow preselects the saved category (visually confirmed via computed background), amount+description prefilled, changing category and saving updates the row subtitle. Regression checks (auth/me, transactions CRUD, salary, settings, delete-lock, delete-account+reseed) still pass. Test data cleaned up post-run.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "global (RN Web)", "issue": "Non-blocking console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' (surfaces from a lib/component). Same category as shadow* warning noted in iteration 1."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Minor: transactions.tsx uses d.getMonth() (0-indexed) for month keys, so the August 2026 header/toggle has testID 'breakdown-toggle-2026-07' (not 2026-08). Works correctly and consistently but the numeric suffix is 1 less than the human month — consider padStart on (getMonth()+1) for clarity in future test-id contracts. Not a functional bug.",
+    "Optional: silence 'props.pointerEvents is deprecated' RN Web warning by migrating any pointerEvents prop usage to style.pointerEvents (nice-to-have)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: /api/categories validates type, trims name, enforces length <=30 and case-insensitive uniqueness per-type — correct. Returns updated user (user_public) so client can re-hydrate custom_categories.",
+    "server.py: transaction category defaults to 'Other', trimmed; PUT accepts optional category and normalizes the same way — consistent with the frontend expectations.",
+    "user_public exposes 'custom_categories' from users doc — /auth/me returns them, matching the frontend contract.",
+    "TransactionSheet.tsx correctly resets category to 'Other' on type switch and rebuilds chips memo when type or user.custom_categories change; longPress delete on custom chips wired to deleteCategory.",
+    "monthPdf.ts HTML-escapes description/category (esc) before embedding — no XSS risk in the generated PDF.",
+    "monthPdf.ts branches on Platform.OS === 'web' to call Print.printAsync (opens browser print dialog) and uses printToFileAsync + Sharing on native — appropriate."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": { "backend": "100% (23/23)", "frontend": "100% of iteration-2 flows verified" },
+  "seed_data_creation": "After the delete-account test wiped state, I re-seeded the 'Gym' (expense) custom category and 5 transactions across Jun/Jul/Aug 2026 (Gym fee/Gym, Old style/Other, Groceries/Food, Side gig/Freelance income, Bus pass/Transport) on user_testseed001 to exercise the multi-month + custom-category flows. All TEST_* records (2 transactions + 1 custom category) created during UI testing were deleted at the end via API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth: localStorage.setItem('sm_session_token', JSON.stringify('test_session_token_fixed_123456')) then reload. Note: month testIDs use getMonth() (0-indexed) — August 2026 = 'breakdown-toggle-2026-07' / 'share-month-2026-07'. For the share-PDF flow on web, stub window.open + window.print before clicking share-month-{key} to avoid a real print dialog; verify a Print call was made and that the FAB / rows remain interactive. TransactionSheet Save button can be near the viewport bottom; page.click force=True works but if it complains 'outside viewport', fall back to page.dispatch_event(sel, 'click'). The delete-account test in TestZDeleteAccount runs last and wipes user + transactions + custom_categories, then re-seeds only the user (no txs/cats) — re-seed test data via direct Mongo or API before UI testing.",
+  "rca_of_issue": "N/A — no bugs found in iteration-2 scope."
+}

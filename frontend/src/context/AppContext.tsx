@@ -25,6 +25,12 @@ WebBrowser.maybeCompleteAuthSession();
 
 const AUTH_BASE = "https://auth.emergentagent.com";
 
+export type CustomCategory = {
+  id: string;
+  name: string;
+  type: "expense" | "income";
+};
+
 export type User = {
   user_id: string;
   email: string;
@@ -35,6 +41,7 @@ export type User = {
   accent: Accent;
   currency: CurrencyCode;
   delete_lock_until: string | null;
+  custom_categories: CustomCategory[];
 };
 
 export type Transaction = {
@@ -42,7 +49,15 @@ export type Transaction = {
   type: "expense" | "income";
   amount: number;
   description: string;
+  category?: string;
   created_at: string;
+};
+
+export type TransactionPayload = {
+  type: "expense" | "income";
+  amount: number;
+  description: string;
+  category?: string;
 };
 
 type Stats = {
@@ -67,9 +82,11 @@ type Ctx = {
   logout: () => Promise<void>;
   processSessionId: (sid: string) => Promise<void>;
   setSalary: (v: number) => Promise<void>;
-  addTransaction: (t: { type: "expense" | "income"; amount: number; description: string }) => Promise<void>;
-  updateTransaction: (id: string, t: { type: "expense" | "income"; amount: number; description: string }) => Promise<void>;
+  addTransaction: (t: TransactionPayload) => Promise<void>;
+  updateTransaction: (id: string, t: TransactionPayload) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  addCategory: (name: string, type: "expense" | "income") => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   updateName: (name: string) => Promise<void>;
   setMode: (m: Mode) => Promise<void>;
   setAccent: (a: Accent) => Promise<void>;
@@ -194,6 +211,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTransactions((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
+  const addCategory = useCallback(async (name: string, type: "expense" | "income") => {
+    const u = await api<User>("/categories", { method: "POST", body: { name, type } });
+    setUser(u);
+  }, []);
+
+  const deleteCategory = useCallback(async (id: string) => {
+    const u = await api<User>(`/categories/${id}`, { method: "DELETE" });
+    setUser(u);
+  }, []);
+
   const updateName = useCallback(async (name: string) => {
     const u = await api<User>("/user/profile", { method: "PUT", body: { name } });
     setUser(u);
@@ -310,6 +337,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    addCategory,
+    deleteCategory,
     updateName,
     setMode,
     setAccent,

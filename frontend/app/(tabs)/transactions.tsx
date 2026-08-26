@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   SectionList,
-  Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -15,6 +14,8 @@ import { useApp, Transaction } from "@/src/context/AppContext";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 import { TransactionSheet } from "@/src/components/TransactionSheet";
 import { BalanceTrend } from "@/src/components/BalanceTrend";
+import { categoryIcon } from "@/src/constants/categories";
+import { shareMonthPdf } from "@/src/utils/monthPdf";
 
 type Filter = "all" | "expense" | "income";
 
@@ -34,6 +35,8 @@ export default function Transactions() {
       income: number;
       expenses: number;
       items: Transaction[];
+      all: Transaction[];
+      cats: Map<string, { name: string; expense: number; income: number }>;
     }>();
     for (const t of transactions) {
       const d = new Date(t.created_at);
@@ -45,11 +48,19 @@ export default function Transactions() {
           income: 0,
           expenses: 0,
           items: [],
+          all: [],
+          cats: new Map(),
         });
       }
       const bucket = map.get(key)!;
       if (t.type === "income") bucket.income += t.amount;
       else bucket.expenses += t.amount;
+      const cname = t.category || "Other";
+      if (!bucket.cats.has(cname)) bucket.cats.set(cname, { name: cname, expense: 0, income: 0 });
+      const c = bucket.cats.get(cname)!;
+      if (t.type === "income") c.income += t.amount;
+      else c.expense += t.amount;
+      bucket.all.push(t);
       if (filter === "all" || t.type === filter) bucket.items.push(t);
     }
     return Array.from(map.values())
@@ -62,6 +73,10 @@ export default function Transactions() {
         income: m.income,
         expenses: m.expenses,
         balance: stats.salary + m.income - m.expenses,
+        breakdown: Array.from(m.cats.values()).sort(
+          (a, b) => b.expense + b.income - (a.expense + a.income),
+        ),
+        allItems: m.all,
         data: m.items,
       }));
   }, [transactions, filter, stats.salary]);
@@ -202,17 +217,22 @@ export default function Transactions() {
 
 function MonthHeader({ theme, section, fmt }: any) {
   const positive = section.balance >= 0;
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const shareMonth = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const message =
-      `${section.title} — Salary Manager\n\n` +
-      `Monthly Salary: ${fmt(section.salary)}\n` +
-      `Extra Income: ${fmt(section.income)}\n` +
-      `Expenses: ${fmt(section.expenses)}\n` +
-      `Balance: ${fmt(section.balance)}`;
     try {
-      await Share.share({ message, title: `${section.title} Summary` });
+      await shareMonthPdf({
+        title: section.title,
+        salary: section.salary,
+        income: section.income,
+        expenses: section.expenses,
+        balance: section.balance,
+        breakdown: section.breakdown,
+        items: section.allItems,
+        accent: theme.accentColor,
+        fmt,
+      });
     } catch {}
   };
 
@@ -246,6 +266,52 @@ function MonthHeader({ theme, section, fmt }: any) {
         <View style={[styles.miniDivider, { backgroundColor: theme.border }]} />
         <MiniStat theme={theme} label="Expenses" value={fmt(section.expenses)} tint={theme.danger} />
       </View>
+      {section.breakdown.length > 0 ? (
+        <>
+          <Pressable
+            testID={`breakdown-toggle-${section.key}`}
+            onPress={() => setShowBreakdown((v) => !v)}
+            style={styles.breakdownToggle}
+            hitSlop={6}
+          >
+            <Text style={[styles.breakdownToggleText, { color: theme.onSurfaceMuted }]}>
+              Category breakdown
+            </Text>
+            <Feather
+              name={showBreakdown ? "chevron-up" : "chevron-down"}
+              size={15}
+              color={theme.onSurfaceMuted}
+            />
+          </Pressable>
+          {showBreakdown ? (
+            <View
+              testID={`breakdown-card-${section.key}`}
+              style={[styles.breakdownCard, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+            >
+              {section.breakdown.map((c: any) => (
+                <View key={c.name} style={styles.breakdownRow}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: theme.brandTertiary }]}>
+                    <Feather name={categoryIcon(c.name) as any} size={13} color={theme.accentColor} />
+                  </View>
+                  <Text style={[styles.breakdownName, { color: theme.onSurfaceSecondary }]} numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  {c.income > 0 ? (
+                    <Text style={[styles.breakdownAmt, { color: theme.success, fontFamily: FONTS.display }]}>
+                      +{fmt(c.income)}
+                    </Text>
+                  ) : null}
+                  {c.expense > 0 ? (
+                    <Text style={[styles.breakdownAmt, { color: theme.danger, fontFamily: FONTS.display }]}>
+                      -{fmt(c.expense)}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -271,14 +337,14 @@ function Row({ theme, item, fmt, onEdit, onDelete }: any) {
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
     >
       <View style={[styles.rowIcon, { backgroundColor: theme.brandTertiary }]}>
-        <Feather name={isExpense ? "arrow-down-left" : "arrow-up-right"} size={18} color={tint} />
+        <Feather name={categoryIcon(item.category) as any} size={18} color={tint} />
       </View>
       <View style={styles.rowMid}>
         <Text style={[styles.rowTitle, { color: theme.onSurface }]} numberOfLines={1}>
           {item.description}
         </Text>
         <Text style={[styles.rowType, { color: theme.onSurfaceMuted }]}>
-          {isExpense ? "Expense" : "Extra Income"}
+          {item.category || "Other"} · {isExpense ? "Expense" : "Extra Income"}
         </Text>
       </View>
       <Text style={[styles.rowAmount, { color: tint, fontFamily: FONTS.display }]}>
@@ -342,6 +408,36 @@ const styles = StyleSheet.create({
   miniLabel: { fontFamily: FONTS.body, fontSize: 11, marginBottom: 4 },
   miniValue: { fontSize: 16, fontWeight: "500" },
   miniDivider: { width: 0.5 },
+  breakdownToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  breakdownToggleText: { fontFamily: FONTS.body, fontSize: 12, fontWeight: "600" },
+  breakdownCard: {
+    borderRadius: RADIUS.md,
+    borderWidth: 0.5,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    paddingVertical: 7,
+  },
+  breakdownIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: RADIUS.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  breakdownName: { flex: 1, fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
+  breakdownAmt: { fontSize: 15, fontWeight: "500", marginLeft: SPACING.sm },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, gap: SPACING.md },
   rowIcon: {
     width: 44,

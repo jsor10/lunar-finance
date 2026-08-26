@@ -23,12 +23,20 @@ Premium, minimalist mobile app to manage monthly finances. Home dashboard (month
 - Settings: edit name (persisted), email + masked password display, dark/light toggle, 3 accent colors applied app-wide, EUR/USD/GBP currency switcher, log out, delete account (type DELETE, 3 attempts, 10-min lock + countdown, final confirmation).
 - Per-account persistence of salary, transactions, theme, accent, currency. Instant recalculation.
 - Verified: 12/12 backend pytest + all frontend flows via testing agent.
+- Activity monthly grouping (SectionList per month with salary/income/expenses/balance summary) + month-over-month balance trend bar chart.
+
+## Implemented (2026-08-26)
+- Categories: preset sets per type (expense: Food/Transport/Housing/Leisure/Health/Shopping/Other; income: Freelance/Bonus/Gift/Investment/Other) + user-created custom categories (POST/DELETE /api/categories, stored in users.custom_categories). Category picker chips in TransactionSheet ('+ New' chip adds custom inline; long-press custom chip deletes). Transactions store `category` (defaults "Other"); rows show "{category} · type" with category icon.
+- Per-month collapsible "Category breakdown" in Activity (per-category income/expense totals).
+- Styled PDF export of a month summary via each month's share button (`src/utils/monthPdf.ts`): expo-print + expo-sharing on native (share sheet with PDF); browser print dialog on web. PDF includes stats strip, category breakdown table, and transaction table in the Glass/Luxe style.
+- Verified: 23/23 backend pytest + all frontend category/PDF flows via testing agent (iteration_2.json, no bugs).
 
 ## Backlog
-- P1: Charts/trends for monthly spending; category tagging for expenses.
+- P1: Charts/trends for monthly spending (trend chart done; category charts possible next).
 - P1: Bottom-sheet ScrollView for very small screens (test-noted robustness).
-- P2: Recurring transactions; export/share monthly summary (PDF/CSV).
-- P2: Month selector to browse historical months.
+- P2: Recurring transactions.
+- P2: Tap a trend-chart bar to scroll to that month's section in Activity.
+- P2: Track historical salary changes per month (historical months currently use current global salary).
 
 ## Next Tasks
-- Await user feedback; consider spending categories + a simple monthly trend chart.
+- Await user feedback on categories + PDF export.

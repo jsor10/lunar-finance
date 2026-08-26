@@ -101,3 +101,85 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Salary Manager app. New features this iteration: (1) Export a styled PDF of a month's summary via the share button on each month header in Activity (expo-print + expo-sharing; on web it opens the browser print dialog). (2) Categories to classify expenses/incomes: preset categories + user-created custom categories (POST/DELETE /api/categories), category picker chips in the transaction sheet, category shown on each row, and a collapsible per-month category breakdown in Activity."
+
+backend:
+  - task: "Category field on transactions (create/update, defaults to Other)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added category to TransactionInput; POST/PUT /api/transactions store it; missing category defaults to 'Other'. Verified via curl."
+  - task: "Custom categories endpoints (POST /api/categories, DELETE /api/categories/{id})"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Stored in users.custom_categories, returned in user_public. Dedupe (case-insensitive per type), name length <=30, invalid type rejected. Verified via curl."
+
+frontend:
+  - task: "Category picker in TransactionSheet (presets + custom add via '+ New' chip, long-press custom chip deletes it)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/TransactionSheet.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Horizontal chips per type (expense/income), switching type resets category to Other. testIDs: category-chip-{name}, category-add-chip, new-category-input, new-category-save, new-category-cancel."
+  - task: "Per-month category breakdown in Activity (collapsible)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/transactions.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "breakdown-toggle-{key} expands breakdown-card-{key} with per-category income/expense totals. Rows now show '{category} · Expense/Extra Income' with category icon."
+  - task: "Styled PDF export of month summary via share button"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/utils/monthPdf.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "share-month-{key} button builds styled HTML (summary stats, category breakdown table, transaction table) and calls Print.printToFileAsync + Sharing.shareAsync on native; Print.printAsync (browser print dialog) on web. On web, verify no crash when tapping share (print dialog may block automation — just confirm no error before dialog)."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 2
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Category field on transactions (create/update, defaults to Other)"
+    - "Custom categories endpoints (POST /api/categories, DELETE /api/categories/{id})"
+    - "Category picker in TransactionSheet (presets + custom add via '+ New' chip, long-press custom chip deletes it)"
+    - "Per-month category breakdown in Activity (collapsible)"
+    - "Styled PDF export of month summary via share button"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Iteration 2: added categories (backend + UI) and styled PDF month export. Auth: seeded bearer token test_session_token_fixed_123456 (see /app/memory/test_credentials.md); on web set localStorage sm_session_token to the JSON-stringified token then reload. Re-seed with `cd /app/backend && python seed_test_user.py` if 401. Existing regression areas to sanity-check: add/edit/delete transaction, month grouping, balance trend chart."

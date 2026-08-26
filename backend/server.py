@@ -63,6 +63,12 @@ class TransactionInput(BaseModel):
     type: str  # 'expense' | 'income'
     amount: float
     description: str
+    category: Optional[str] = "Other"
+
+
+class CategoryInput(BaseModel):
+    name: str
+    type: str  # 'expense' | 'income'
 
 
 class DeleteLockUpdate(BaseModel):
@@ -80,6 +86,7 @@ def user_public(u: dict) -> dict:
         "accent": u.get("accent", "navy"),
         "currency": u.get("currency", "EUR"),
         "delete_lock_until": u.get("delete_lock_until"),
+        "custom_categories": u.get("custom_categories", []),
     }
 
 
@@ -192,6 +199,33 @@ async def delete_account(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+# ---------- Categories ----------
+@api_router.post("/categories")
+async def add_category(payload: CategoryInput, user: dict = Depends(get_current_user)):
+    if payload.type not in ("expense", "income"):
+        raise HTTPException(status_code=400, detail="Invalid type")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    if len(name) > 30:
+        raise HTTPException(status_code=400, detail="Name too long")
+    existing = user.get("custom_categories", [])
+    if any(c["name"].lower() == name.lower() and c["type"] == payload.type for c in existing):
+        raise HTTPException(status_code=400, detail="Category already exists")
+    cat = {"id": str(uuid.uuid4()), "name": name, "type": payload.type}
+    await db.users.update_one({"user_id": user["user_id"]}, {"$push": {"custom_categories": cat}})
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(u)
+
+
+@api_router.delete("/categories/{cat_id}")
+async def delete_category(cat_id: str, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]},
+                              {"$pull": {"custom_categories": {"id": cat_id}}})
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(u)
+
+
 # ---------- Finance ----------
 @api_router.put("/finance/salary")
 async def update_salary(payload: SalaryUpdate, user: dict = Depends(get_current_user)):
@@ -216,6 +250,7 @@ async def create_transaction(payload: TransactionInput, user: dict = Depends(get
         "type": payload.type,
         "amount": abs(payload.amount),
         "description": payload.description,
+        "category": (payload.category or "Other").strip() or "Other",
         "created_at": now_utc().isoformat(),
     }
     await db.transactions.insert_one(dict(tx))
@@ -227,7 +262,8 @@ async def create_transaction(payload: TransactionInput, user: dict = Depends(get
 async def update_transaction(tx_id: str, payload: TransactionInput, user: dict = Depends(get_current_user)):
     result = await db.transactions.update_one(
         {"id": tx_id, "user_id": user["user_id"]},
-        {"$set": {"type": payload.type, "amount": abs(payload.amount), "description": payload.description}},
+        {"$set": {"type": payload.type, "amount": abs(payload.amount), "description": payload.description,
+                  "category": (payload.category or "Other").strip() or "Other"}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")

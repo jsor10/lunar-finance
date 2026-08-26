@@ -134,6 +134,124 @@ class TestTransactions:
         assert r.status_code == 401
 
 
+# ---------- Categories (NEW) ----------
+class TestCategories:
+    """Custom categories add/delete + validation."""
+
+    def _cleanup(self, api, name, type_):
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        for c in me.get("custom_categories", []):
+            if c["name"] == name and c["type"] == type_:
+                api.delete(f"{BASE_URL}/api/categories/{c['id']}", headers=AUTH)
+
+    def test_add_category_expense_persists_and_returned_in_me(self, api):
+        name = f"TEST_CatExp_{uuid.uuid4().hex[:6]}"
+        self._cleanup(api, name, "expense")
+        r = api.post(f"{BASE_URL}/api/categories", json={"name": name, "type": "expense"}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        u = r.json()
+        assert any(c["name"] == name and c["type"] == "expense" for c in u["custom_categories"])
+        # GET /auth/me confirms persistence
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        assert any(c["name"] == name for c in me["custom_categories"])
+        self._cleanup(api, name, "expense")
+
+    def test_add_category_income(self, api):
+        name = f"TEST_CatInc_{uuid.uuid4().hex[:6]}"
+        self._cleanup(api, name, "income")
+        r = api.post(f"{BASE_URL}/api/categories", json={"name": name, "type": "income"}, headers=AUTH)
+        assert r.status_code == 200
+        assert any(c["name"] == name and c["type"] == "income" for c in r.json()["custom_categories"])
+        self._cleanup(api, name, "income")
+
+    def test_add_category_duplicate_case_insensitive_returns_400(self, api):
+        name = f"TEST_Dup_{uuid.uuid4().hex[:6]}"
+        self._cleanup(api, name, "expense")
+        r1 = api.post(f"{BASE_URL}/api/categories", json={"name": name, "type": "expense"}, headers=AUTH)
+        assert r1.status_code == 200
+        r2 = api.post(f"{BASE_URL}/api/categories", json={"name": name.upper(), "type": "expense"}, headers=AUTH)
+        assert r2.status_code == 400, r2.text
+        # But same name different type is allowed
+        r3 = api.post(f"{BASE_URL}/api/categories", json={"name": name, "type": "income"}, headers=AUTH)
+        assert r3.status_code == 200
+        self._cleanup(api, name, "expense")
+        self._cleanup(api, name, "income")
+
+    def test_add_category_invalid_type_returns_400(self, api):
+        r = api.post(f"{BASE_URL}/api/categories",
+                     json={"name": "TEST_bogus", "type": "bogus"}, headers=AUTH)
+        assert r.status_code == 400
+
+    def test_add_category_empty_name_returns_400(self, api):
+        r = api.post(f"{BASE_URL}/api/categories",
+                     json={"name": "   ", "type": "expense"}, headers=AUTH)
+        assert r.status_code == 400
+
+    def test_delete_category_removes_it(self, api):
+        name = f"TEST_Del_{uuid.uuid4().hex[:6]}"
+        r = api.post(f"{BASE_URL}/api/categories", json={"name": name, "type": "expense"}, headers=AUTH)
+        assert r.status_code == 200
+        cat = next(c for c in r.json()["custom_categories"] if c["name"] == name)
+        d = api.delete(f"{BASE_URL}/api/categories/{cat['id']}", headers=AUTH)
+        assert d.status_code == 200
+        me = api.get(f"{BASE_URL}/api/auth/me", headers=AUTH).json()
+        assert not any(c["id"] == cat["id"] for c in me["custom_categories"])
+
+    def test_categories_require_auth(self, api):
+        r = requests.post(f"{BASE_URL}/api/categories",
+                          json={"name": "x", "type": "expense"})
+        assert r.status_code == 401
+
+
+# ---------- Transactions with category (NEW) ----------
+class TestTransactionsCategory:
+    def test_create_with_category_persists(self, api):
+        payload = {"type": "expense", "amount": 12.5,
+                   "description": "TEST_food_tx", "category": "Food"}
+        r = api.post(f"{BASE_URL}/api/transactions", json=payload, headers=AUTH)
+        assert r.status_code == 200, r.text
+        tx = r.json()
+        assert tx["category"] == "Food"
+        # Verify via list
+        lst = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        got = next(t for t in lst if t["id"] == tx["id"])
+        assert got["category"] == "Food"
+        api.delete(f"{BASE_URL}/api/transactions/{tx['id']}", headers=AUTH)
+
+    def test_create_without_category_defaults_to_Other(self, api):
+        payload = {"type": "expense", "amount": 5.0, "description": "TEST_nocat"}
+        r = api.post(f"{BASE_URL}/api/transactions", json=payload, headers=AUTH)
+        assert r.status_code == 200
+        tx = r.json()
+        assert tx["category"] == "Other"
+        api.delete(f"{BASE_URL}/api/transactions/{tx['id']}", headers=AUTH)
+
+    def test_update_transaction_category(self, api):
+        r = api.post(f"{BASE_URL}/api/transactions",
+                     json={"type": "expense", "amount": 20, "description": "TEST_upd_cat",
+                           "category": "Food"}, headers=AUTH)
+        tx = r.json()
+        r2 = api.put(f"{BASE_URL}/api/transactions/{tx['id']}",
+                     json={"type": "expense", "amount": 20, "description": "TEST_upd_cat",
+                           "category": "Transport"}, headers=AUTH)
+        assert r2.status_code == 200
+        assert r2.json()["category"] == "Transport"
+        # verify via GET
+        lst = api.get(f"{BASE_URL}/api/transactions", headers=AUTH).json()
+        got = next(t for t in lst if t["id"] == tx["id"])
+        assert got["category"] == "Transport"
+        api.delete(f"{BASE_URL}/api/transactions/{tx['id']}", headers=AUTH)
+
+    def test_transaction_with_custom_category(self, api):
+        # user has 'Gym' seeded custom category; use it
+        r = api.post(f"{BASE_URL}/api/transactions",
+                     json={"type": "expense", "amount": 40, "description": "TEST_gym",
+                           "category": "Gym"}, headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["category"] == "Gym"
+        api.delete(f"{BASE_URL}/api/transactions/{r.json()['id']}", headers=AUTH)
+
+
 # ---------- Delete account (LAST) ----------
 class TestZDeleteAccount:
     def test_delete_account_then_reseed(self, api):
