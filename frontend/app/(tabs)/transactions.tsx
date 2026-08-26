@@ -17,8 +17,6 @@ import { BalanceTrend } from "@/src/components/BalanceTrend";
 import { categoryIcon } from "@/src/constants/categories";
 import { shareMonthPdf } from "@/src/utils/monthPdf";
 
-type Filter = "all" | "expense" | "income";
-
 type MonthData = {
   key: string;
   title: string;
@@ -30,13 +28,11 @@ type MonthData = {
   balance: number;
   breakdown: { name: string; expense: number; income: number }[];
   allItems: Transaction[];
-  items: Transaction[];
 };
 
 export default function Transactions() {
   const { theme, transactions, deleteTransaction, deleteMonth, fmt, stats } = useApp();
   const insets = useSafeAreaInsets();
-  const [filter, setFilter] = useState<Filter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -50,7 +46,6 @@ export default function Transactions() {
       month1: number;
       income: number;
       expenses: number;
-      items: Transaction[];
       all: Transaction[];
       cats: Map<string, { name: string; expense: number; income: number }>;
     }>();
@@ -65,7 +60,6 @@ export default function Transactions() {
           month1: d.getMonth() + 1,
           income: 0,
           expenses: 0,
-          items: [],
           all: [],
           cats: new Map(),
         });
@@ -79,7 +73,6 @@ export default function Transactions() {
       if (t.type === "income") c.income += t.amount;
       else c.expense += t.amount;
       bucket.all.push(t);
-      if (filter === "all" || t.type === filter) bucket.items.push(t);
     }
     return Array.from(map.values())
       .sort((a, b) => (a.key < b.key ? -1 : 1))
@@ -96,9 +89,8 @@ export default function Transactions() {
           (a, b) => b.expense + b.income - (a.expense + a.income),
         ),
         allItems: m.all,
-        items: m.items,
       }));
-  }, [transactions, filter, stats.salary]);
+  }, [transactions, stats.salary]);
 
   const trend = useMemo(
     () =>
@@ -147,51 +139,23 @@ export default function Transactions() {
     deleteTransaction(t.id);
   };
 
-  const chips: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "expense", label: "Expenses" },
-    { key: "income", label: "Extra Income" },
-  ];
-
   return (
     <View style={[styles.container, { backgroundColor: theme.surface }]}>
       {/* Sticky header */}
       <View style={{ paddingTop: insets.top + SPACING.md, backgroundColor: theme.surface }}>
-        <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-          Activity
-        </Text>
-        <View style={styles.chipRow}>
-          {chips.map((c) => {
-            const active = filter === c.key;
-            return (
-              <Pressable
-                key={c.key}
-                testID={`filter-${c.key}`}
-                onPress={() => setFilter(c.key)}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: active ? theme.accentColor : theme.surfaceSecondary,
-                    borderColor: active ? theme.accentColor : theme.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: active ? theme.onPrimary : theme.onSurfaceSecondary },
-                  ]}
-                >
-                  {c.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.pageHeader}>
+          <Text style={[styles.kicker, { color: theme.accentColor }]}>YOUR MONEY</Text>
+          <Text style={[styles.title, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+            Activity
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.onSurfaceMuted }]}>
+            Expenses & extra income, month by month
+          </Text>
         </View>
       </View>
 
       <FlatList
-        data={current ? current.items : []}
+        data={current ? current.allItems : []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{
           paddingHorizontal: SPACING.lg,
@@ -215,14 +179,6 @@ export default function Transactions() {
                   monthKey={current.key}
                 />
                 <MonthHeader theme={theme} section={current} fmt={fmt} />
-                {current.items.length === 0 ? (
-                  <Text
-                    testID="month-filter-empty"
-                    style={[styles.filterEmpty, { color: theme.onSurfaceMuted }]}
-                  >
-                    No {filter === "expense" ? "expenses" : "extra income"} this month.
-                  </Text>
-                ) : null}
               </>
             ) : null}
           </>
@@ -263,7 +219,6 @@ export default function Transactions() {
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         editing={editing}
-        defaultType={filter === "income" ? "income" : "expense"}
       />
     </View>
   );
@@ -498,22 +453,16 @@ function Row({ theme, item, fmt, onEdit, onDelete }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  title: {
-    fontSize: 32,
-    fontWeight: "500",
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+  pageHeader: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xs },
+  kicker: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    letterSpacing: 2.5,
+    fontWeight: "700",
+    marginBottom: 4,
   },
-  chipRow: { flexDirection: "row", gap: SPACING.sm, paddingHorizontal: SPACING.lg },
-  chip: {
-    height: 40,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 0.5,
-  },
-  chipText: { fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
+  title: { fontSize: 34, fontWeight: "500" },
+  subtitle: { fontFamily: FONTS.body, fontSize: 13, marginTop: 4 },
   monthNav: {
     flexDirection: "row",
     alignItems: "center",
@@ -604,12 +553,6 @@ const styles = StyleSheet.create({
   },
   breakdownName: { flex: 1, fontFamily: FONTS.body, fontSize: 13, fontWeight: "600" },
   breakdownAmt: { fontSize: 15, fontWeight: "500", marginLeft: SPACING.sm },
-  filterEmpty: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    textAlign: "center",
-    paddingVertical: SPACING.lg,
-  },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, gap: SPACING.md },
   rowIcon: {
     width: 44,

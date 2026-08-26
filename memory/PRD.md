@@ -35,6 +35,7 @@ Premium, minimalist mobile app to manage monthly finances. Home dashboard (month
 - Settings → Data → "Reset All Data" (confirm sheet) → DELETE /api/transactions erases every entry, keeps salary/settings/categories.
 - Home "Spending by Category" donut (react-native-svg): this month's expenses by category with legend (%, amount); falls back to All Time; hidden when no expenses.
 - Verified: 30/30 backend pytest + all frontend flows via testing agent (iteration_3.json, no bugs).
+- UI simplification (user request): removed Home "Financial Summary" section; removed Activity filter chips (All/Expenses/Extra Income — everything now shown together); stronger visual hierarchy: accent-colored uppercase eyebrows (WELCOME BACK / INSIGHTS / YOUR MONEY), larger serif titles, muted subtitles, uppercase stat labels with red/green colored values.
 
 ## Backlog
 - P1: Bottom-sheet ScrollView for very small screens (test-noted robustness).

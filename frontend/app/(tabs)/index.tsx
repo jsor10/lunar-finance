@@ -77,7 +77,7 @@ export default function Home() {
         {/* Greeting */}
         <View style={styles.header} testID="home-header">
           <View>
-            <Text style={[styles.kicker, { color: theme.onSurfaceMuted }]}>WELCOME BACK</Text>
+            <Text style={[styles.kicker, { color: theme.accentColor }]}>WELCOME BACK</Text>
             <Text style={[styles.greeting, { color: theme.onSurface, fontFamily: FONTS.display }]}>
               {firstName}
             </Text>
@@ -160,9 +160,16 @@ export default function Home() {
         {/* Spending by category */}
         {donut.total > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-              Spending by Category
-            </Text>
+            <SectionHeader
+              theme={theme}
+              eyebrow="INSIGHTS"
+              title="Spending by Category"
+              subtitle={
+                donut.scope === "This Month"
+                  ? "Where your money went this month"
+                  : "Where your money has gone so far"
+              }
+            />
             <View style={{ marginBottom: SPACING.xl }}>
               <CategoryDonut
                 data={donut.data}
@@ -174,29 +181,23 @@ export default function Home() {
             </View>
           </>
         ) : null}
-
-        {/* Monthly summary */}
-        <Text style={[styles.sectionTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-          Financial Summary
-        </Text>
-        <View style={[styles.summaryCard, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
-          <SummaryRow
-            theme={theme}
-            label="This Month"
-            value={fmt(stats.thisMonthExpenses)}
-            hint="spent"
-          />
-          <View style={[styles.hr, { backgroundColor: theme.border }]} />
-          <SummaryRow
-            theme={theme}
-            label="Avg / Expense"
-            value={fmt(stats.avgExpense)}
-            hint="per entry"
-          />
-        </View>
       </ScrollView>
 
       <SalarySheet visible={salaryOpen} onClose={() => setSalaryOpen(false)} />
+    </View>
+  );
+}
+
+function SectionHeader({ theme, eyebrow, title, subtitle }: any) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={[styles.sectionEyebrow, { color: theme.accentColor }]}>{eyebrow}</Text>
+      <Text style={[styles.sectionTitle, { color: theme.onSurface, fontFamily: FONTS.display }]}>
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text style={[styles.sectionSubtitle, { color: theme.onSurfaceMuted }]}>{subtitle}</Text>
+      ) : null}
     </View>
   );
 }
@@ -211,21 +212,7 @@ function StatCard({ width, theme, icon, label, value, tint, testID }: any) {
         <Feather name={icon} size={18} color={tint} />
       </View>
       <Text style={[styles.statLabel, { color: theme.onSurfaceMuted }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: theme.onSurface, fontFamily: FONTS.display }]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function SummaryRow({ theme, label, value, hint }: any) {
-  return (
-    <View style={styles.summaryRow}>
-      <View>
-        <Text style={[styles.summaryLabel, { color: theme.onSurface }]}>{label}</Text>
-        <Text style={[styles.summaryHint, { color: theme.onSurfaceMuted }]}>{hint}</Text>
-      </View>
-      <Text style={[styles.summaryValue, { color: theme.accentColor, fontFamily: FONTS.display }]}>
+      <Text style={[styles.statValue, { color: tint, fontFamily: FONTS.display }]}>
         {value}
       </Text>
     </View>
@@ -235,8 +222,8 @@ function SummaryRow({ theme, label, value, hint }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: "row", justifyContent: "space-between", marginBottom: SPACING.lg },
-  kicker: { fontFamily: FONTS.body, fontSize: 11, letterSpacing: 2, marginBottom: 2 },
-  greeting: { fontSize: 32, fontWeight: "500" },
+  kicker: { fontFamily: FONTS.body, fontSize: 11, letterSpacing: 2.5, marginBottom: 4, fontWeight: "700" },
+  greeting: { fontSize: 36, fontWeight: "500" },
   lockBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,18 +278,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: SPACING.md,
   },
-  statLabel: { fontFamily: FONTS.body, fontSize: 13, marginBottom: 4 },
-  statValue: { fontSize: 24, fontWeight: "500" },
-  sectionTitle: { fontSize: 22, fontWeight: "500", marginBottom: SPACING.md },
-  summaryCard: { borderRadius: RADIUS.md, borderWidth: 0.5, paddingHorizontal: SPACING.lg },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: SPACING.lg,
+  statLabel: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    fontWeight: "700",
+    marginBottom: 6,
   },
-  summaryLabel: { fontFamily: FONTS.body, fontSize: 15, fontWeight: "600" },
-  summaryHint: { fontFamily: FONTS.body, fontSize: 12, marginTop: 2 },
-  summaryValue: { fontSize: 22, fontWeight: "500" },
-  hr: { height: 0.5 },
+  statValue: { fontSize: 26, fontWeight: "500" },
+  sectionHeader: { marginBottom: SPACING.md },
+  sectionEyebrow: {
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    letterSpacing: 2.5,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  sectionTitle: { fontSize: 24, fontWeight: "500" },
+  sectionSubtitle: { fontFamily: FONTS.body, fontSize: 13, marginTop: 4, lineHeight: 18 },
 });
