@@ -1,0 +1,61 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: base44
+      MONGO_INITDB_ROOT_PASSWORD: base44-local
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--username", "base44", "--password", "base44-local", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app/backend
+    volumes:
+      - .:/app
+      - python_packages:/usr/local/lib/python3.12/site-packages
+    environment:
+      MONGO_URL: mongodb://base44:base44-local@mongo:27017/?authSource=admin
+      DB_NAME: salary_manager
+      PYTHONUNBUFFERED: "1"
+    command: >-
+      sh -c "pip install --disable-pip-version-check fastapi==0.110.1 uvicorn==0.25.0 motor==3.3.1 pymongo==4.6.3 python-dotenv==1.2.2 httpx==0.28.1 &&
+      uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    image: node:22
+    working_dir: /app/frontend
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/frontend/node_modules
+      - expo_cache:/app/frontend/.expo
+      - metro_cache:/app/frontend/.metro-cache
+    environment:
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_BACKEND_URL: https://8000-${BASE44_PUBLIC_HOST_SUFFIX}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    command: >-
+      sh -c "npm install --no-audit --no-fund &&
+      npx expo start --web --host lan --port 8081"
+    ports:
+      - "3000:8081"
+    depends_on:
+      - api
+
+volumes:
+  mongo_data:
+  python_packages:
+  frontend_node_modules:
+  expo_cache:
+  metro_cache:
