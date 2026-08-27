@@ -14,7 +14,7 @@ function abbreviate(n: number): string {
   return `${Math.round(n)}`;
 }
 
-export function BalanceTrend({ trend, theme, fmt }: { trend: Point[]; theme: any; fmt: (n: number) => string }) {
+export function BalanceTrend({ trend, theme, fmt, t }: { trend: Point[]; theme: any; fmt: (n: number) => string; t: (k: string) => string }) {
   const balances = trend.map((t) => t.balance);
   const maxV = Math.max(...balances, 1);
   const minV = Math.min(...balances, 0);
@@ -32,7 +32,7 @@ export function BalanceTrend({ trend, theme, fmt }: { trend: Point[]; theme: any
     >
       <View style={styles.header}>
         <View>
-          <Text style={[styles.title, { color: theme.onSurfaceMuted }]}>BALANCE TREND</Text>
+          <Text style={[styles.title, { color: theme.onSurfaceMuted }]}>{t("balance_trend")}</Text>
           <Text style={[styles.big, { color: theme.onSurface, fontFamily: FONTS.display }]}>
             {fmt(last)}
           </Text>

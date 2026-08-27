@@ -38,8 +38,8 @@ export function CategoryDonut({ data, total, scopeLabel, theme, fmt }: Props) {
       style={[styles.card, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
     >
       <View style={styles.donutWrap}>
-        <Svg width={SIZE} height={SIZE}>
-          <G rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`}>
+        <Svg width={SIZE} height={SIZE} style={{ transform: [{ rotate: "-90deg" }] }}>
+          <G>
             <Circle
               cx={SIZE / 2}
               cy={SIZE / 2}

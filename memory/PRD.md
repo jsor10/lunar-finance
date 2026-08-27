@@ -46,6 +46,14 @@ Premium, minimalist mobile app to manage monthly finances. Home dashboard (month
 - Year overview: /year route (button on Activity header) — year arrows, income/expenses/saved totals strip, 12-month grid of saved-per-month, styled year PDF share (expo-print).
 - Verified: 54/54 backend pytest + all frontend flows via testing agent (iteration_4.json report, no bugs). Fixed minor: GET /templates no longer returns user_id.
 
+## Implemented (2026-08-26, iteration 7)
+- Deletable categories: long-press ANY chip in the entry sheet removes it — customs via DELETE /api/categories/{id}, presets via POST /api/categories/hide (users.hidden_categories; "Other" protected).
+- Language setting: EN (default) / FR / ES in Settings (PUT /api/user/settings {language}); full UI i18n via /app/frontend/src/i18n/index.ts + t() in AppContext; month names localized. PDFs remain English.
+- Savings tab (4th tab): multiple goals (collection `goals`; GET/POST/PUT/DELETE /api/goals, POST /api/goals/{id}/contribute). Contributions log an expense (description = goal name, category = "Savings", auto-created). Goal cards with progress, Add money sheet, edit/delete. Old single-goal (/users/goal + Home goal card) REMOVED.
+- CSV export: Settings > Data > Export CSV — client-built CSV (transactions + salary history + goals); web blob download, native share via expo-file-system + expo-sharing.
+- Polish: SVG donut no longer warns (rotate via style), BALANCE TREND header translated.
+- Verified: 74/74 backend pytest + all frontend flows via testing agent (iteration 7, no bugs).
+
 ## Backlog
 - P1: Bottom-sheet ScrollView for very small screens (test-noted robustness).
 - P2: Recurring transactions.

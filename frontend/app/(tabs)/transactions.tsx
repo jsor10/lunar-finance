@@ -221,7 +221,7 @@ export default function Transactions() {
           </Pressable>
         </View>
 
-        {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} /> : null}
+        {trend.length >= 2 ? <BalanceTrend trend={trend} theme={theme} fmt={fmt} t={t} /> : null}
 
         {current ? (
           <>
