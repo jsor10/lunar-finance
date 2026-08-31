@@ -233,7 +233,7 @@ export default function Settings() {
                 >
                   <Text style={styles.langFlag}>{l.flag}</Text>
                   <Text
-                    style={[styles.currencyCode, { color: active ? theme.onPrimary : theme.onSurfaceMuted }]}
+                    style={[styles.currencyCode, { color: active ? "#FFFFFF" : theme.onSurfaceMuted }]}
                   >
                     {l.code.toUpperCase()}
                   </Text>

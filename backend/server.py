@@ -97,6 +97,27 @@ class DeleteLockUpdate(BaseModel):
     lock_until: Optional[str] = None  # ISO string or null to clear
 
 
+class RecurringInput(BaseModel):
+    type: str  # 'expense' | 'income'
+    amount: float
+    description: str
+    category: Optional[str] = "Other"
+    frequency: str  # 'weekly' | 'monthly'
+
+
+def add_period(dt: datetime, frequency: str) -> datetime:
+    if frequency == "weekly":
+        return dt + timedelta(weeks=1)
+    # monthly — same day next month
+    month = dt.month + 1
+    year = dt.year
+    if month > 12:
+        month = 1
+        year += 1
+    day = min(dt.day, [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+    return dt.replace(year=year, month=month, day=day)
+
+
 def user_public(u: dict) -> dict:
     return {
         "user_id": u["user_id"],
@@ -392,6 +413,92 @@ async def contribute_to_goal(goal_id: str, payload: ContributionInput, user: dic
     return {"goal": goal_public(g), "transaction": tx, "user": user_public(u)}
 
 
+# ---------- Recurring transactions ----------
+@api_router.post("/recurring")
+async def create_recurring(payload: RecurringInput, user: dict = Depends(get_current_user)):
+    if payload.type not in ("expense", "income"):
+        raise HTTPException(status_code=400, detail="Invalid type")
+    if payload.frequency not in ("weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Invalid frequency")
+    if payload.amount <= 0 or not payload.description.strip():
+        raise HTTPException(status_code=400, detail="Amount and description required")
+    now = now_utc()
+    # Create first transaction immediately
+    tx = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "type": payload.type,
+        "amount": abs(payload.amount),
+        "description": payload.description.strip(),
+        "category": (payload.category or "Other").strip() or "Other",
+        "created_at": now.isoformat(),
+    }
+    await db.transactions.insert_one(dict(tx))
+    tx.pop("_id", None)
+    tx.pop("user_id", None)
+    # Create recurring rule with next due date
+    rule = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "type": payload.type,
+        "amount": abs(payload.amount),
+        "description": payload.description.strip(),
+        "category": (payload.category or "Other").strip() or "Other",
+        "frequency": payload.frequency,
+        "next_due": add_period(now, payload.frequency).isoformat(),
+        "active": True,
+        "created_at": now.isoformat(),
+    }
+    await db.recurring.insert_one(dict(rule))
+    rule.pop("_id", None)
+    rule.pop("user_id", None)
+    return {"transaction": tx, "recurring": rule}
+
+
+@api_router.get("/recurring")
+async def list_recurring(user: dict = Depends(get_current_user)):
+    rules = await db.recurring.find(
+        {"user_id": user["user_id"], "active": True},
+        {"_id": 0, "user_id": 0},
+    ).to_list(100)
+    return rules
+
+
+@api_router.delete("/recurring/{rule_id}")
+async def delete_recurring(rule_id: str, user: dict = Depends(get_current_user)):
+    result = await db.recurring.delete_one({"id": rule_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Recurring rule not found")
+    return {"ok": True}
+
+
+@api_router.post("/recurring/process")
+async def process_recurring(user: dict = Depends(get_current_user)):
+    now = now_utc()
+    rules = await db.recurring.find({"user_id": user["user_id"], "active": True}).to_list(200)
+    created = 0
+    for rule in rules:
+        next_due = to_aware(datetime.fromisoformat(rule["next_due"]))
+        while next_due <= now:
+            tx = {
+                "id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "type": rule["type"],
+                "amount": rule["amount"],
+                "description": rule["description"],
+                "category": rule["category"],
+                "created_at": next_due.isoformat(),
+            }
+            await db.transactions.insert_one(dict(tx))
+            created += 1
+            next_due = add_period(next_due, rule["frequency"])
+        await db.recurring.update_one(
+            {"id": rule["id"]},
+            {"$set": {"next_due": next_due.isoformat()}},
+        )
+    return {"ok": True, "created": created}
+
+
 # ---------- Templates (quick-add) ----------
 @api_router.get("/templates")
 async def list_templates(user: dict = Depends(get_current_user)):
@@ -500,6 +607,7 @@ async def startup():
     await db.user_sessions.create_index("session_token", unique=True)
     await db.user_sessions.create_index("user_id")
     await db.transactions.create_index("user_id")
+    await db.recurring.create_index("user_id")
 
 
 app.include_router(api_router)

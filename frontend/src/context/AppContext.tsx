@@ -52,6 +52,20 @@ export type Template = {
   category?: string;
 };
 
+export type Frequency = "none" | "weekly" | "monthly";
+
+export type RecurringRule = {
+  id: string;
+  type: "expense" | "income";
+  amount: number;
+  description: string;
+  category: string;
+  frequency: "weekly" | "monthly";
+  next_due: string;
+  active: boolean;
+  created_at: string;
+};
+
 export type User = {
   user_id: string;
   email: string;
@@ -113,6 +127,7 @@ type Ctx = {
   processSessionId: (sid: string) => Promise<void>;
   setSalary: (v: number) => Promise<void>;
   addTransaction: (t: TransactionPayload) => Promise<void>;
+  addRecurring: (t: TransactionPayload & { frequency: "weekly" | "monthly" }) => Promise<void>;
   updateTransaction: (id: string, t: TransactionPayload) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   deleteMonth: (year: number, month: number) => Promise<void>;
@@ -177,6 +192,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const me = await api<User>("/auth/me");
       setUser(me);
+      try { await api("/recurring/process", { method: "POST" }); } catch {}
       await loadTransactions();
     } catch (e) {
       await clearToken();
@@ -249,6 +265,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addTransaction = useCallback(async (t: any) => {
     const tx = await api<Transaction>("/transactions", { method: "POST", body: t });
     setTransactions((prev) => [tx, ...prev]);
+  }, []);
+
+  const addRecurring = useCallback(async (t: any) => {
+    const res = await api<{ transaction: Transaction; recurring: RecurringRule }>(
+      "/recurring",
+      { method: "POST", body: t },
+    );
+    setTransactions((prev) => [res.transaction, ...prev]);
   }, []);
 
   const updateTransaction = useCallback(async (id: string, t: any) => {
@@ -471,6 +495,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     processSessionId,
     setSalary,
     addTransaction,
+    addRecurring,
     updateTransaction,
     deleteTransaction,
     deleteMonth,

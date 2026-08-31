@@ -12,7 +12,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { SheetModal } from "@/src/components/SheetModal";
-import { useApp, Transaction } from "@/src/context/AppContext";
+import { useApp, Transaction, Frequency } from "@/src/context/AppContext";
 import { PRESET_CATEGORIES, categoryIcon } from "@/src/constants/categories";
 import { FONTS, SPACING, RADIUS } from "@/src/theme/fonts";
 
@@ -31,6 +31,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
     user,
     templates,
     addTransaction,
+    addRecurring,
     updateTransaction,
     addCategory,
     deleteCategory,
@@ -47,6 +48,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
   const [addingCat, setAddingCat] = useState(false);
   const [newCat, setNewCat] = useState("");
   const [saveTpl, setSaveTpl] = useState(false);
+  const [frequency, setFrequency] = useState<Frequency>("none");
   const [saving, setSaving] = useState(false);
   const amountRef = useRef<TextInput>(null);
 
@@ -66,6 +68,7 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
       setAddingCat(false);
       setNewCat("");
       setSaveTpl(false);
+      setFrequency("none");
       const t = setTimeout(() => amountRef.current?.focus(), 250);
       return () => clearTimeout(t);
     }
@@ -141,7 +144,11 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
       const payload = { type, amount: num, description: description.trim(), category };
       if (editing) await updateTransaction(editing.id, payload);
       else {
-        await addTransaction(payload);
+        if (frequency !== "none") {
+          await addRecurring({ ...payload, frequency });
+        } else {
+          await addTransaction(payload);
+        }
         if (saveTpl) {
           try {
             await addTemplate(payload);
@@ -370,6 +377,37 @@ export function TransactionSheet({ visible, onClose, editing, defaultType = "exp
             {t("save_as_template")}
           </Text>
         </Pressable>
+      ) : null}
+
+      {!editing ? (
+        <>
+          <Text style={[styles.catLabel, { color: theme.onSurfaceMuted }]}>{t("repeat_label")}</Text>
+          <View style={[styles.segment, { backgroundColor: theme.surfaceTertiary, marginBottom: SPACING.lg }]}>
+            {(["none", "weekly", "monthly"] as const).map((opt) => {
+              const active = frequency === opt;
+              return (
+                <Pressable
+                  key={opt}
+                  testID={`frequency-${opt}`}
+                  onPress={() => setFrequency(opt)}
+                  style={[
+                    styles.segmentItem,
+                    active && { backgroundColor: theme.surfaceSecondary },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: active ? theme.accentColor : theme.onSurfaceMuted, fontSize: 13 },
+                    ]}
+                  >
+                    {opt === "none" ? t("repeat_none") : opt === "weekly" ? t("repeat_weekly") : t("repeat_monthly")}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
       ) : null}
 
       <Pressable
