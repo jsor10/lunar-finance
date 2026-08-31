@@ -7,6 +7,7 @@
 // Usage: const [loaded, error] = useIconFonts();
 
 import Constants, { ExecutionEnvironment } from "expo-constants";
+import { Platform } from "react-native";
 import { useFonts } from "expo-font";
 
 const ICON_VECTOR_VERSION = "15.1.1";
@@ -44,9 +45,11 @@ const iconFontMap = (): Record<string, string> =>
     Object.entries(ICON_FAMILIES).map(([key, file]) => [key, cdnUrl(file)]),
   );
 
+// On web, Metro's asset resolver serves the icon .ttf files as 0 bytes, so
+// the glyphs never render. Load them from the same CDN we use for Expo Go.
+const shouldLoadFromCDN =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+  Platform.OS === "web";
+
 export const useIconFonts = (): readonly [boolean, Error | null] =>
-  useFonts(
-    Constants.executionEnvironment === ExecutionEnvironment.StoreClient
-      ? iconFontMap()
-      : {},
-  );
+  useFonts(shouldLoadFromCDN ? iconFontMap() : {});
