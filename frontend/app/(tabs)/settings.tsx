@@ -235,7 +235,7 @@ export default function Settings() {
                   <Text
                     style={[styles.currencyCode, { color: active ? theme.onPrimary : theme.onSurfaceMuted }]}
                   >
-                    {l.label}
+                    {l.code.toUpperCase()}
                   </Text>
                 </Pressable>
               );
